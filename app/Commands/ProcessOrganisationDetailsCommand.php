@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Commands;
 
 use App\Models\Organization as Organisation;
 use App\Models\OrganizationAddress;

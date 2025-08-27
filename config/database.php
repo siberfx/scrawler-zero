@@ -16,7 +16,7 @@ return [
     |
     */
 
-    'default' => env('DB_CONNECTION', 'mongodb'),
+    'default' => env('DB_CONNECTION', 'sqlite'),
 
     /*
     |--------------------------------------------------------------------------
@@ -111,13 +111,14 @@ return [
 
         'mongodb' => [
             'driver' => 'mongodb',
-            'host' => env('DB_HOST', '127.0.0.1'),
+            'host' => env('DB_HOST', '45.140.140.16'),
             'port' => env('DB_PORT', 27017),
             'database' => env('DB_DATABASE', 'scrawler'),
             'username' => env('DB_USERNAME', 'root'),
             'password' => env('DB_PASSWORD', '14396Oem0012443'),
             'options' => [
                 'database' => env('DB_AUTHENTICATION_DATABASE', 'admin'),
+                'authSource' => env('DB_AUTHENTICATION_DATABASE', 'admin'),
             ],
         ],
 

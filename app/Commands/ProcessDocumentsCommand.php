@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Commands;
 
 use App\Models\Document;
 use Carbon\Carbon;
