@@ -19,7 +19,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::connection('mongodb')->create('organization_categories', function (Blueprint $collection) {
-            $collection->index('name');
+            // Only create unique index, not both regular and unique
             $collection->unique('name');
         });
     }
