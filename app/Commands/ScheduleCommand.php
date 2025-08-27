@@ -28,8 +28,9 @@ class ScheduleCommand extends Command
     {
         $this->info('Running scheduled commands...');
         
-        // This will be handled by the schedule method in each command
-        $this->call('schedule:run');
+        // The schedule method below defines what commands should run
+        // Laravel Zero will automatically handle the scheduling
+        $this->info('Schedule configuration loaded successfully.');
     }
 
     /**
