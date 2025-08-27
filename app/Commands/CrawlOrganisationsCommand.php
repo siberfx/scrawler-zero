@@ -14,6 +14,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Console\Scheduling\Schedule;
 
 class CrawlOrganisationsCommand extends Command
 {
@@ -339,5 +340,17 @@ class CrawlOrganisationsCommand extends Command
         if ($addressesCreated > 0 || $relationsCreated > 0 || $categoriesCreated > 0) {
             $this->info("Addresses created: {$addressesCreated}, Relations created: {$relationsCreated}, Categories created: {$categoriesCreated}");
         }
+    }
+
+    /**
+     * Define the command's schedule.
+     */
+    public function schedule(Schedule $schedule): void
+    {
+        $schedule->command(static::class)
+            ->dailyAt('02:00')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(base_path('logs/organizations-crawl.log'));
     }
 }

@@ -1,0 +1,11 @@
+# Scrawler Crontab Configuration for Ubuntu Server
+# Add this to your crontab with: crontab crontab.txt
+
+# Run Laravel Zero scheduler every minute
+* * * * * cd /var/www/scrawler && php scrawler schedule:run >> storage/logs/scheduler.log 2>&1
+
+# Alternative: Run individual commands directly (uncomment if preferred)
+# 0 2 * * * cd /var/www/scrawler && php scrawler organizations:crawl >> storage/logs/organizations-crawl.log 2>&1
+# 0 */6 * * * cd /var/www/scrawler && php scrawler openoverheid:crawl >> storage/logs/openoverheid-crawl.log 2>&1
+# 0 3 * * * cd /var/www/scrawler && php scrawler organizations:process-details --limit=500 >> storage/logs/organizations-process.log 2>&1
+# 0 */2 * * * cd /var/www/scrawler && php scrawler documents:process --limit=50 >> storage/logs/documents-process.log 2>&1

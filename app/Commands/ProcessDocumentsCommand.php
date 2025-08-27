@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\Panther\Client as PantherClient;
 use Symfony\Component\DomCrawler\Crawler;
+use Illuminate\Console\Scheduling\Schedule;
 
 class ProcessDocumentsCommand extends Command
 {
@@ -899,5 +900,17 @@ class ProcessDocumentsCommand extends Command
         }
 
         return null;
+    }
+
+    /**
+     * Define the command's schedule.
+     */
+    public function schedule(Schedule $schedule): void
+    {
+        $schedule->command(static::class . ' --limit=50')
+            ->everyTwoHours()
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(base_path('logs/documents-process.log'));
     }
 }

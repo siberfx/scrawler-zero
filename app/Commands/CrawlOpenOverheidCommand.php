@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Panther\Client as PantherClient;
 use Symfony\Component\Panther\DomCrawler\Crawler;
+use Illuminate\Console\Scheduling\Schedule;
 
 class CrawlOpenOverheidCommand extends Command
 {
@@ -202,5 +203,17 @@ class CrawlOpenOverheidCommand extends Command
 
         // Give processes time to terminate
         sleep(1);
+    }
+
+    /**
+     * Define the command's schedule.
+     */
+    public function schedule(Schedule $schedule): void
+    {
+        $schedule->command(static::class)
+            ->everySixHours()
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(base_path('logs/openoverheid-crawl.log'));
     }
 }

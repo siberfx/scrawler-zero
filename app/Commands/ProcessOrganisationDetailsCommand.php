@@ -11,6 +11,7 @@ use Exception;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Console\Scheduling\Schedule;
 
 class ProcessOrganisationDetailsCommand extends Command
 {
@@ -710,5 +711,17 @@ class ProcessOrganisationDetailsCommand extends Command
         }
 
         return $relations;
+    }
+
+    /**
+     * Define the command's schedule.
+     */
+    public function schedule(Schedule $schedule): void
+    {
+        $schedule->command(static::class . ' --limit=500')
+            ->dailyAt('03:00')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(base_path('logs/organizations-process.log'));
     }
 }
