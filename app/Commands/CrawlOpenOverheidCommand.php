@@ -84,7 +84,34 @@ class CrawlOpenOverheidCommand extends Command
             return 1;
         }
         
+        // Check if the driver is executable
+        if (!is_executable($driverPath)) {
+            $this->error("ChromeDriver found at {$driverPath} but is not executable.");
+            $this->info("Run: sudo chmod +x {$driverPath}");
+            return 1;
+        }
+        
+        // Test ChromeDriver execution
+        $testCommand = escapeshellarg($driverPath) . ' --version 2>&1';
+        exec($testCommand, $output, $returnCode);
+        
+        if ($returnCode !== 0) {
+            $this->error("ChromeDriver execution test failed:");
+            $this->error("Command: {$testCommand}");
+            $this->error("Return code: {$returnCode}");
+            $this->error("Output: " . implode("\n", $output));
+            
+            // Check for common issues
+            $this->info("\nTroubleshooting steps:");
+            $this->info("1. Verify Chrome/Chromium is installed: which google-chrome || which chromium-browser");
+            $this->info("2. Check ChromeDriver compatibility with Chrome version");
+            $this->info("3. Install missing dependencies: sudo apt-get install libnss3 libgconf-2-4 libxss1 libappindicator1 libindicator7");
+            
+            return 1;
+        }
+        
         $this->info("Using ChromeDriver at: {$driverPath}");
+        $this->info("ChromeDriver version: " . trim(implode(' ', $output)));
 
         // Kill any existing ChromeDriver processes to free up the port
         $this->killExistingChromeDrivers();
