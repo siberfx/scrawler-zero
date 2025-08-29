@@ -122,8 +122,14 @@ class CrawlOpenOverheidCommand extends Command
             '--no-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
             '--window-size=1920,1080',
             '--remote-debugging-port=0', // Use random available port
+            '--user-data-dir=/tmp/chrome-user-data-' . uniqid(), // Unique temp directory
+            '--data-path=/tmp/chrome-data-' . uniqid(),
+            '--disk-cache-dir=/tmp/chrome-cache-' . uniqid(),
+            '--crash-dumps-dir=/tmp/chrome-crashes-' . uniqid(),
         ]);
 
         while (true) {
