@@ -44,14 +44,14 @@ class CrawlOpenOverheidCommand extends Command
 
         $baseUrl = 'https://open.overheid.nl/zoeken';
         $processedCount = 0;
+        // Check if site requires JavaScript (React SPA)
+        if ($this->option('use-http')) {
+            $this->warn('HTTP-based crawling is not supported for the new React SPA version of open.overheid.nl');
+            $this->info('The site now requires JavaScript execution. Switching to browser automation...');
+        }
+
         $createdCount = 0;
         $updatedCount = 0;
-
-        if ($useHttp) {
-            $this->info('Starting open.overheid.nl crawler with HTTP client...');
-
-            return $this->crawlWithHttp($baseUrl, $organisation, $filterId, $page, $processedCount, $createdCount, $updatedCount);
-        }
 
         $this->info('Starting open.overheid.nl crawler with Panther...');
 
