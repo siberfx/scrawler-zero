@@ -112,6 +112,14 @@ class CrawlOpenOverheidCommand extends Command
         
         $this->info("Using ChromeDriver at: {$driverPath}");
         $this->info("ChromeDriver version: " . trim(implode(' ', $output)));
+        
+        // Check Chrome installation and version
+        exec('google-chrome --version 2>/dev/null || chromium-browser --version 2>/dev/null', $chromeOutput, $chromeReturnCode);
+        if ($chromeReturnCode === 0 && !empty($chromeOutput)) {
+            $this->info("Chrome version: " . trim($chromeOutput[0]));
+        } else {
+            $this->warn("Chrome/Chromium not found or not accessible. This may cause issues.");
+        }
 
         // Kill any existing ChromeDriver processes to free up the port
         $this->killExistingChromeDrivers();
@@ -120,27 +128,54 @@ class CrawlOpenOverheidCommand extends Command
         $tempDir = '/tmp/chrome-' . uniqid();
         mkdir($tempDir, 0755, true);
         
-        $client = PantherClient::createChromeClient($driverPath, [
-            '--headless=new',
-            '--no-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--disable-web-security',
-            '--disable-features=VizDisplayCompositor',
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-renderer-backgrounding',
-            '--disable-extensions',
-            '--disable-plugins',
-            '--disable-default-apps',
-            '--disable-sync',
-            '--no-first-run',
-            '--no-default-browser-check',
-            '--window-size=1920,1080',
-            '--user-data-dir=' . $tempDir,
-            '--single-process',
-            '--disable-ipc-flooding-protection',
-        ]);
+        try {
+            $client = PantherClient::createChromeClient($driverPath, [
+                '--headless=new',
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--disable-default-apps',
+                '--disable-sync',
+                '--no-first-run',
+                '--no-default-browser-check',
+                '--window-size=1920,1080',
+                '--user-data-dir=' . $tempDir,
+                '--single-process',
+                '--disable-ipc-flooding-protection',
+            ]);
+        } catch (\Exception $e) {
+            $this->error("Failed to create Chrome client with advanced options: " . $e->getMessage());
+            $this->info("Trying fallback configuration...");
+            
+            // Fallback: Try minimal configuration
+            try {
+                $client = PantherClient::createChromeClient($driverPath, [
+                    '--headless',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--remote-debugging-port=9222',
+                    '--user-data-dir=' . $tempDir,
+                ]);
+            } catch (\Exception $fallbackError) {
+                $this->error("Fallback configuration also failed: " . $fallbackError->getMessage());
+                
+                // Final fallback: Try without user-data-dir
+                $client = PantherClient::createChromeClient($driverPath, [
+                    '--headless',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                ]);
+            }
+        }
 
         while (true) {
             $url = "{$baseUrl}?filter-id--organisatie={$filterId}&organisatie={$organisation}&page={$page}";
