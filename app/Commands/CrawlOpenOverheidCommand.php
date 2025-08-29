@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Panther\Client as PantherClient;
 use Symfony\Component\Panther\DomCrawler\Crawler;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Console\Scheduling\Schedule;
 
 class CrawlOpenOverheidCommand extends Command
@@ -21,7 +22,8 @@ class CrawlOpenOverheidCommand extends Command
     protected $signature = 'openoverheid:crawl 
                             {--organisation=mnre1058 : The organisation identifier} 
                             {--filter-id=min : The filter-id} 
-                            {--page=1 : The page number to start from}';
+                            {--page=1 : The page number to start from}
+                            {--use-http : Use HTTP client instead of browser automation}';
 
     /**
      * The console command description.
@@ -35,16 +37,22 @@ class CrawlOpenOverheidCommand extends Command
      */
     public function handle()
     {
-        $this->info('Starting open.overheid.nl crawler with Panther...');
-
         $organisation = $this->option('organisation');
         $filterId = $this->option('filter-id');
         $page = (int) $this->option('page');
+        $useHttp = $this->option('use-http');
 
         $baseUrl = 'https://open.overheid.nl/zoekresultaten';
         $processedCount = 0;
         $createdCount = 0;
         $updatedCount = 0;
+
+        if ($useHttp) {
+            $this->info('Starting open.overheid.nl crawler with HTTP client...');
+            return $this->crawlWithHttp($baseUrl, $organisation, $filterId, $page, $processedCount, $createdCount, $updatedCount);
+        }
+
+        $this->info('Starting open.overheid.nl crawler with Panther...');
 
         // Determine the correct ChromeDriver executable based on the operating system
         if (PHP_OS_FAMILY === 'Windows') {
@@ -240,6 +248,116 @@ class CrawlOpenOverheidCommand extends Command
         $this->info("Crawling finished. Processed: {$processedCount} (Created: {$createdCount}, Updated: {$updatedCount})");
 
         return 0;
+    }
+
+    /**
+     * Crawl using HTTP client instead of browser automation.
+     */
+    protected function crawlWithHttp(string $baseUrl, string $organisation, string $filterId, int $page, int &$processedCount, int &$createdCount, int &$updatedCount): int
+    {
+        while (true) {
+            $url = "{$baseUrl}?filter-id--organisatie={$filterId}&organisatie={$organisation}&page={$page}";
+            $this->info("Crawling page: {$page} -> {$url}");
+
+            try {
+                $response = Http::withHeaders([
+                    'User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language' => 'en-US,en;q=0.5',
+                    'Accept-Encoding' => 'gzip, deflate',
+                    'Connection' => 'keep-alive',
+                ])->timeout(30)->get($url);
+
+                if (!$response->successful()) {
+                    $this->error("HTTP request failed with status: {$response->status()}");
+                    break;
+                }
+
+                $html = $response->body();
+                $documents = $this->parseHtmlDocuments($html, $organisation);
+
+                if (empty($documents)) {
+                    $this->info('No more documents found on this page. Ending crawl.');
+                    break;
+                }
+
+                $this->info('Found '.count($documents).' documents on this page.');
+
+                foreach ($documents as $docData) {
+                    Document::withoutSyncingToSearch(function () use ($docData, &$createdCount, &$updatedCount) {
+                        $document = Document::where('source_url', $docData['source_url'])->first();
+                        if ($document) {
+                            $document->update($docData);
+                            $updatedCount++;
+                        } else {
+                            Document::create($docData);
+                            $createdCount++;
+                        }
+                    });
+                    $processedCount++;
+                }
+
+                // Check if there is a 'next' page link in HTML
+                if (!str_contains($html, 'class="next"') || !str_contains($html, 'href=')) {
+                    $this->info('No next page link found. Ending crawl.');
+                    break;
+                }
+
+                $page++;
+                sleep(1); // Be a good citizen
+
+            } catch (\Exception $e) {
+                $this->error("An error occurred: {$e->getMessage()}");
+                Log::error('CrawlOpenOverheidCommand HTTP Error', ['exception' => $e]);
+                break;
+            }
+        }
+
+        $this->info("Crawling finished. Processed: {$processedCount} (Created: {$createdCount}, Updated: {$updatedCount})");
+        return 0;
+    }
+
+    /**
+     * Parse HTML content to extract documents using simple string parsing.
+     */
+    protected function parseHtmlDocuments(string $html, string $organisation): array
+    {
+        $documents = [];
+        
+        // Use DOMDocument for reliable HTML parsing
+        $dom = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $dom->loadHTML($html);
+        libxml_clear_errors();
+        
+        $xpath = new \DOMXPath($dom);
+        
+        // Look for result items in the list
+        $resultNodes = $xpath->query('//div[contains(@class, "result--list")]//li');
+        
+        foreach ($resultNodes as $node) {
+            $titleNodes = $xpath->query('.//h2[contains(@class, "result--title")]//a', $node);
+            
+            if ($titleNodes->length > 0) {
+                $titleNode = $titleNodes->item(0);
+                $title = trim($titleNode->textContent);
+                $href = $titleNode->getAttribute('href');
+                
+                if ($title && $href) {
+                    $source_url = str_starts_with($href, 'http') ? $href : 'https://open.overheid.nl' . $href;
+                    
+                    $documents[] = [
+                        'title' => $title,
+                        'source_url' => $source_url,
+                        'organisation_suffix' => $organisation,
+                        'is_processed' => false,
+                        'fetch_timestamp' => now(),
+                    ];
+                }
+            }
+        }
+        
+        return $documents;
     }
 
     /**
