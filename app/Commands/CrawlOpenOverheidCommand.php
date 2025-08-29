@@ -326,45 +326,132 @@ class CrawlOpenOverheidCommand extends Command
     protected function parseHtmlDocuments(string $html, string $organisation): array
     {
         $documents = [];
-
+        
         // Use DOMDocument for reliable HTML parsing
-        $dom = new \DOMDocument;
+        $dom = new \DOMDocument();
         libxml_use_internal_errors(true);
         $dom->loadHTML($html);
         libxml_clear_errors();
-
+        
         $xpath = new \DOMXPath($dom);
-
-        // Look for result items in the list
-        $resultNodes = $xpath->query('//div[contains(@class, "result--list")]//li');
-
-        foreach ($resultNodes as $node) {
-            $titleNodes = $xpath->query('.//h2[contains(@class, "result--title")]//a', $node);
-
-            if ($titleNodes->length > 0) {
-                $titleNode = $titleNodes->item(0);
-                $title = trim($titleNode->textContent);
-                $href = $titleNode->getAttribute('href');
-
-                if ($title && $href) {
-                    $source_url = str_starts_with($href, 'http') ? $href : 'https://open.overheid.nl'.$href;
-
-                    $documents[] = [
-                        'title' => $title,
-                        'source_url' => $source_url,
-                        'organisation_suffix' => $organisation,
-                        'is_processed' => false,
-                        'fetch_timestamp' => now(),
+        
+        // Updated selectors for new HTML structure with dynamic CSS classes
+        $resultSelectors = [
+            // New structure: ul with id="resultaten_lijst" and li with dynamic classes
+            '//ul[@id="resultaten_lijst"]//li[contains(@class, "styles_list_item")]',
+            // Fallback: any ul containing li items with links
+            '//ul[contains(@class, "styles_list")]//li',
+            // Legacy structure
+            '//div[contains(@class, "result--list")]//li',
+        ];
+        
+        foreach ($resultSelectors as $selector) {
+            $resultNodes = $xpath->query($selector);
+            
+            if ($resultNodes->length > 0) {
+                foreach ($resultNodes as $node) {
+                    // Try multiple title selectors for new structure
+                    $titleSelectors = [
+                        // New structure: h5 with dynamic classes containing a link
+                        './/h5[contains(@class, "styles_heading")]//a[contains(@class, "styles_link")]',
+                        // Alternative: any h5 with a link
+                        './/h5//a[@href]',
+                        // Legacy structure
+                        './/h2[contains(@class, "result--title")]//a',
+                        // Fallback: any link with title attribute
+                        './/a[@title and @href]',
                     ];
+                    
+                    foreach ($titleSelectors as $titleSelector) {
+                        $titleNodes = $xpath->query($titleSelector, $node);
+                        
+                        if ($titleNodes->length > 0) {
+                            $titleNode = $titleNodes->item(0);
+                            $title = trim($titleNode->textContent);
+                            $href = $titleNode->getAttribute('href');
+                            
+                            if ($title && $href) {
+                                $source_url = str_starts_with($href, 'http') ? $href : 'https://open.overheid.nl'.$href;
+                                
+                                // Extract additional metadata from the new structure
+                                $metadata = $this->extractListItemMetadata($xpath, $node);
+                                
+                                $documents[] = array_merge([
+                                    'title' => $title,
+                                    'source_url' => $source_url,
+                                    'organisation_suffix' => $organisation,
+                                    'is_processed' => false,
+                                    'fetch_timestamp' => now(),
+                                ], $metadata);
+                                
+                                break; // Found title, move to next item
+                            }
+                        }
+                    }
                 }
+                break; // Found results with this selector, no need to try others
             }
         }
-
+        
         return $documents;
     }
 
     /**
-     * Parse the HTML content to extract documents.
+     * Extract additional metadata from list items in the new structure
+     */
+    protected function extractListItemMetadata(\DOMXPath $xpath, \DOMNode $node): array
+    {
+        $metadata = [];
+        
+        try {
+            // Extract publication date
+            $pubDateNodes = $xpath->query('.//p[@id="Gepubliceerd_op" or contains(text(), "Gepubliceerd op")]', $node);
+            if ($pubDateNodes->length > 0) {
+                $pubDateText = trim($pubDateNodes->item(0)->textContent);
+                if (preg_match('/(\d{2}-\d{2}-\d{4})/', $pubDateText, $matches)) {
+                    try {
+                        $metadata['publication_date'] = \Carbon\Carbon::createFromFormat('d-m-Y', $matches[1])->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        // Ignore date parsing errors
+                    }
+                }
+            }
+            
+            // Extract last modified date
+            $modDateNodes = $xpath->query('.//p[@id="Laatst_gewijzigd" or contains(text(), "Laatst gewijzigd")]', $node);
+            if ($modDateNodes->length > 0) {
+                $modDateText = trim($modDateNodes->item(0)->textContent);
+                if (preg_match('/(\d{2}-\d{2}-\d{4})/', $modDateText, $matches)) {
+                    try {
+                        $metadata['last_modified'] = \Carbon\Carbon::createFromFormat('d-m-Y', $matches[1])->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        // Ignore date parsing errors
+                    }
+                }
+            }
+            
+            // Extract file type and size for documents
+            $fileTypeNodes = $xpath->query('.//p[@id="Bestands_type" or contains(text(), "PDF") or contains(text(), "DOC")]', $node);
+            if ($fileTypeNodes->length > 0) {
+                $fileType = trim($fileTypeNodes->item(0)->textContent);
+                $metadata['file_type'] = $fileType;
+            }
+            
+            $fileSizeNodes = $xpath->query('.//p[@id="Bestandsgrootte" or contains(text(), "MB") or contains(text(), "KB")]', $node);
+            if ($fileSizeNodes->length > 0) {
+                $fileSize = trim($fileSizeNodes->item(0)->textContent);
+                $metadata['file_size'] = $fileSize;
+            }
+            
+        } catch (\Exception $e) {
+            // Ignore metadata extraction errors
+        }
+        
+        return $metadata;
+    }
+
+    /**
+     * Parse the HTML content to extract documents (browser automation version).
      */
     protected function parseDocuments(Crawler $crawler, string $organisation): array
     {
