@@ -6,11 +6,11 @@ use App\Models\Document;
 use Facebook\WebDriver\Exception\NoSuchElementException;
 use Facebook\WebDriver\WebDriverBy;
 use Illuminate\Console\Command;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Panther\Client as PantherClient;
 use Symfony\Component\Panther\DomCrawler\Crawler;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Console\Scheduling\Schedule;
 
 class CrawlOpenOverheidCommand extends Command
 {
@@ -42,13 +42,14 @@ class CrawlOpenOverheidCommand extends Command
         $page = (int) $this->option('page');
         $useHttp = $this->option('use-http');
 
-        $baseUrl = 'https://open.overheid.nl/zoekresultaten';
+        $baseUrl = 'https://open.overheid.nl/zoeken';
         $processedCount = 0;
         $createdCount = 0;
         $updatedCount = 0;
 
         if ($useHttp) {
             $this->info('Starting open.overheid.nl crawler with HTTP client...');
+
             return $this->crawlWithHttp($baseUrl, $organisation, $filterId, $page, $processedCount, $createdCount, $updatedCount);
         }
 
@@ -63,9 +64,9 @@ class CrawlOpenOverheidCommand extends Command
                 '/usr/local/bin/chromedriver',
                 '/usr/bin/chromedriver',
                 '/home/chrome/chromedriver',
-                base_path('drivers/chromedriver')
+                base_path('drivers/chromedriver'),
             ];
-            
+
             $driverPath = null;
             foreach ($possiblePaths as $path) {
                 if (file_exists($path)) {
@@ -77,7 +78,7 @@ class CrawlOpenOverheidCommand extends Command
 
         // Check if the driver exists
         if (! $driverPath || ! file_exists($driverPath)) {
-            $this->error("ChromeDriver not found. Searched locations:");
+            $this->error('ChromeDriver not found. Searched locations:');
             if (PHP_OS_FAMILY === 'Windows') {
                 $this->error("- {$driverPath}");
             } else {
@@ -91,51 +92,52 @@ class CrawlOpenOverheidCommand extends Command
 
             return 1;
         }
-        
+
         // Check if the driver is executable
-        if (!is_executable($driverPath)) {
+        if (! is_executable($driverPath)) {
             $this->error("ChromeDriver found at {$driverPath} but is not executable.");
             $this->info("Run: sudo chmod +x {$driverPath}");
+
             return 1;
         }
-        
+
         // Test ChromeDriver execution
-        $testCommand = escapeshellarg($driverPath) . ' --version 2>&1';
+        $testCommand = escapeshellarg($driverPath).' --version 2>&1';
         exec($testCommand, $output, $returnCode);
-        
+
         if ($returnCode !== 0) {
-            $this->error("ChromeDriver execution test failed:");
+            $this->error('ChromeDriver execution test failed:');
             $this->error("Command: {$testCommand}");
             $this->error("Return code: {$returnCode}");
-            $this->error("Output: " . implode("\n", $output));
-            
+            $this->error('Output: '.implode("\n", $output));
+
             // Check for common issues
             $this->info("\nTroubleshooting steps:");
-            $this->info("1. Verify Chrome/Chromium is installed: which google-chrome || which chromium-browser");
-            $this->info("2. Check ChromeDriver compatibility with Chrome version");
-            $this->info("3. Install missing dependencies: sudo apt-get install libnss3 libgconf-2-4 libxss1 libappindicator1 libindicator7");
-            
+            $this->info('1. Verify Chrome/Chromium is installed: which google-chrome || which chromium-browser');
+            $this->info('2. Check ChromeDriver compatibility with Chrome version');
+            $this->info('3. Install missing dependencies: sudo apt-get install libnss3 libgconf-2-4 libxss1 libappindicator1 libindicator7');
+
             return 1;
         }
-        
+
         $this->info("Using ChromeDriver at: {$driverPath}");
-        $this->info("ChromeDriver version: " . trim(implode(' ', $output)));
-        
+        $this->info('ChromeDriver version: '.trim(implode(' ', $output)));
+
         // Check Chrome installation and version
         exec('google-chrome --version 2>/dev/null || chromium-browser --version 2>/dev/null', $chromeOutput, $chromeReturnCode);
-        if ($chromeReturnCode === 0 && !empty($chromeOutput)) {
-            $this->info("Chrome version: " . trim($chromeOutput[0]));
+        if ($chromeReturnCode === 0 && ! empty($chromeOutput)) {
+            $this->info('Chrome version: '.trim($chromeOutput[0]));
         } else {
-            $this->warn("Chrome/Chromium not found or not accessible. This may cause issues.");
+            $this->warn('Chrome/Chromium not found or not accessible. This may cause issues.');
         }
 
         // Kill any existing ChromeDriver processes to free up the port
         $this->killExistingChromeDrivers();
 
         // Create Chrome client in headless mode (no visible browser window)
-        $tempDir = '/tmp/chrome-' . uniqid();
+        $tempDir = '/tmp/chrome-'.uniqid();
         mkdir($tempDir, 0755, true);
-        
+
         try {
             // Try with chromium-browser binary explicitly
             $client = PantherClient::createChromeClient($driverPath, [
@@ -152,7 +154,7 @@ class CrawlOpenOverheidCommand extends Command
                 '--no-first-run',
                 '--no-default-browser-check',
                 '--window-size=1920,1080',
-                '--user-data-dir=' . $tempDir,
+                '--user-data-dir='.$tempDir,
                 '--disable-software-rasterizer',
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
@@ -161,9 +163,9 @@ class CrawlOpenOverheidCommand extends Command
                 '--disable-ipc-flooding-protection',
             ], [], 'chromium-browser');
         } catch (\Exception $e) {
-            $this->error("Failed with chromium-browser: " . $e->getMessage());
-            $this->info("Trying with google-chrome...");
-            
+            $this->error('Failed with chromium-browser: '.$e->getMessage());
+            $this->info('Trying with google-chrome...');
+
             try {
                 $client = PantherClient::createChromeClient($driverPath, [
                     '--headless',
@@ -172,12 +174,12 @@ class CrawlOpenOverheidCommand extends Command
                     '--disable-gpu',
                     '--disable-web-security',
                     '--window-size=1920,1080',
-                    '--user-data-dir=' . $tempDir,
+                    '--user-data-dir='.$tempDir,
                 ], [], 'google-chrome');
             } catch (\Exception $fallbackError) {
-                $this->error("Failed with google-chrome: " . $fallbackError->getMessage());
-                $this->info("Trying minimal configuration...");
-                
+                $this->error('Failed with google-chrome: '.$fallbackError->getMessage());
+                $this->info('Trying minimal configuration...');
+
                 // Final fallback: Minimal configuration without specifying browser
                 $client = PantherClient::createChromeClient($driverPath, [
                     '--headless',
@@ -239,12 +241,12 @@ class CrawlOpenOverheidCommand extends Command
         }
 
         $client->quit();
-        
+
         // Clean up temp directory
         if (isset($tempDir) && is_dir($tempDir)) {
-            exec("rm -rf " . escapeshellarg($tempDir));
+            exec('rm -rf '.escapeshellarg($tempDir));
         }
-        
+
         $this->info("Crawling finished. Processed: {$processedCount} (Created: {$createdCount}, Updated: {$updatedCount})");
 
         return 0;
@@ -268,7 +270,7 @@ class CrawlOpenOverheidCommand extends Command
                     'Connection' => 'keep-alive',
                 ])->timeout(30)->get($url);
 
-                if (!$response->successful()) {
+                if (! $response->successful()) {
                     $this->error("HTTP request failed with status: {$response->status()}");
                     break;
                 }
@@ -298,7 +300,7 @@ class CrawlOpenOverheidCommand extends Command
                 }
 
                 // Check if there is a 'next' page link in HTML
-                if (!str_contains($html, 'class="next"') || !str_contains($html, 'href=')) {
+                if (! str_contains($html, 'class="next"') || ! str_contains($html, 'href=')) {
                     $this->info('No next page link found. Ending crawl.');
                     break;
                 }
@@ -314,6 +316,7 @@ class CrawlOpenOverheidCommand extends Command
         }
 
         $this->info("Crawling finished. Processed: {$processedCount} (Created: {$createdCount}, Updated: {$updatedCount})");
+
         return 0;
     }
 
@@ -323,29 +326,29 @@ class CrawlOpenOverheidCommand extends Command
     protected function parseHtmlDocuments(string $html, string $organisation): array
     {
         $documents = [];
-        
+
         // Use DOMDocument for reliable HTML parsing
-        $dom = new \DOMDocument();
+        $dom = new \DOMDocument;
         libxml_use_internal_errors(true);
         $dom->loadHTML($html);
         libxml_clear_errors();
-        
+
         $xpath = new \DOMXPath($dom);
-        
+
         // Look for result items in the list
         $resultNodes = $xpath->query('//div[contains(@class, "result--list")]//li');
-        
+
         foreach ($resultNodes as $node) {
             $titleNodes = $xpath->query('.//h2[contains(@class, "result--title")]//a', $node);
-            
+
             if ($titleNodes->length > 0) {
                 $titleNode = $titleNodes->item(0);
                 $title = trim($titleNode->textContent);
                 $href = $titleNode->getAttribute('href');
-                
+
                 if ($title && $href) {
-                    $source_url = str_starts_with($href, 'http') ? $href : 'https://open.overheid.nl' . $href;
-                    
+                    $source_url = str_starts_with($href, 'http') ? $href : 'https://open.overheid.nl'.$href;
+
                     $documents[] = [
                         'title' => $title,
                         'source_url' => $source_url,
@@ -356,7 +359,7 @@ class CrawlOpenOverheidCommand extends Command
                 }
             }
         }
-        
+
         return $documents;
     }
 
