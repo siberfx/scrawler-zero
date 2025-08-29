@@ -523,25 +523,154 @@ class ProcessDocumentsCommand extends Command
     protected function extractStructuredDocumentDetails(DOMXPath $xpath, array &$metadata): void
     {
         try {
-            // Extract structured data from the document details table
-            $detailsTable = $xpath->query('//table | //dl | //div[contains(@class, "document-details")] | //div[contains(@class, "metadata")]');
-            
-            if ($detailsTable->length > 0) {
-                // Look for key-value pairs in various formats
-                $this->extractKeyValuePairs($xpath, $metadata);
-            }
-
-            // Extract specific fields commonly found in government documents
+            // First try to extract visible metadata
+            $this->extractKeyValuePairs($xpath, $metadata);
             $this->extractGovernmentDocumentFields($xpath, $metadata);
-
-            // Extract publication information
             $this->extractPublicationInfo($xpath, $metadata);
+
+            // Try to extract hidden metadata that appears after "Toon alle kenmerken"
+            $this->extractHiddenMetadata($xpath, $metadata);
 
         } catch (\Exception $e) {
             Log::warning('Failed to extract structured document details', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
+        }
+    }
+
+    /**
+     * Extract hidden metadata that appears after clicking "Toon alle kenmerken"
+     */
+    protected function extractHiddenMetadata(DOMXPath $xpath, array &$metadata): void
+    {
+        try {
+            // Look for hidden content or JavaScript data
+            $hiddenNodes = $xpath->query('//div[contains(@style, "display:none")] | //div[contains(@class, "hidden")] | //script[contains(text(), "kenmerken")]');
+            
+            foreach ($hiddenNodes as $node) {
+                $content = $node->textContent;
+                
+                // Extract structured data from hidden content
+                if (preg_match_all('/(\w+):\s*([^,\n]+)/i', $content, $matches, PREG_SET_ORDER)) {
+                    foreach ($matches as $match) {
+                        $key = trim($match[1]);
+                        $value = trim($match[2]);
+                        
+                        if (!empty($key) && !empty($value)) {
+                            $normalizedKey = $this->normalizeFieldKey($key);
+                            if ($normalizedKey) {
+                                $metadata['hidden_fields'][$normalizedKey] = $value;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Look for specific open.overheid.nl metadata patterns
+            $this->extractOpenOverheidMetadata($xpath, $metadata);
+
+            // Try to find JSON-LD structured data
+            $this->extractJsonLdData($xpath, $metadata);
+
+        } catch (\Exception $e) {
+            Log::warning('Failed to extract hidden metadata', [
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Extract open.overheid.nl specific metadata patterns
+     */
+    protected function extractOpenOverheidMetadata(DOMXPath $xpath, array &$metadata): void
+    {
+        // Common open.overheid.nl field patterns
+        $overheidFields = [
+            'identificatienummer' => '//dt[contains(text(), "identificatienummer")]/following-sibling::dd[1] | //th[contains(text(), "identificatienummer")]/following-sibling::td[1]',
+            'bezoekadres' => '//dt[contains(text(), "bezoekadres")]/following-sibling::dd[1] | //th[contains(text(), "bezoekadres")]/following-sibling::td[1]',
+            'postadres' => '//dt[contains(text(), "postadres")]/following-sibling::dd[1] | //th[contains(text(), "postadres")]/following-sibling::td[1]',
+            'taal' => '//dt[contains(text(), "Taal")]/following-sibling::dd[1] | //th[contains(text(), "Taal")]/following-sibling::td[1]',
+            'opsteller' => '//dt[contains(text(), "Opsteller")]/following-sibling::dd[1] | //th[contains(text(), "Opsteller")]/following-sibling::td[1]',
+            'gepubliceerd_op' => '//dt[contains(text(), "Gepubliceerd op")]/following-sibling::dd[1] | //th[contains(text(), "Gepubliceerd op")]/following-sibling::td[1]',
+            'laatst_gewijzigd' => '//dt[contains(text(), "Laatst gewijzigd")]/following-sibling::dd[1] | //th[contains(text(), "Laatst gewijzigd")]/following-sibling::td[1]',
+            'document_creatiedatum' => '//dt[contains(text(), "Document creatiedatum")]/following-sibling::dd[1] | //th[contains(text(), "Document creatiedatum")]/following-sibling::td[1]',
+        ];
+
+        foreach ($overheidFields as $field => $xpathQuery) {
+            $nodes = $xpath->query($xpathQuery);
+            if ($nodes->length > 0) {
+                $value = trim($nodes->item(0)->textContent);
+                if (!empty($value)) {
+                    $metadata['overheid_fields'][$field] = $value;
+                    
+                    // Map to database fields where appropriate
+                    switch ($field) {
+                        case 'identificatienummer':
+                            $metadata['database_fields']['roo_identifier'] = $value;
+                            break;
+                        case 'taal':
+                            $metadata['database_fields']['language'] = substr($value, 0, 2);
+                            break;
+                        case 'opsteller':
+                            $metadata['database_fields']['government_entity_name'] = $value;
+                            break;
+                        case 'gepubliceerd_op':
+                        case 'document_creatiedatum':
+                            try {
+                                $parsedDate = Carbon::parse($value)->format('Y-m-d');
+                                $metadata['database_fields']['publication_date'] = $parsedDate;
+                            } catch (\Exception $e) {
+                                // Keep original value if parsing fails
+                            }
+                            break;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Extract JSON-LD structured data
+     */
+    protected function extractJsonLdData(DOMXPath $xpath, array &$metadata): void
+    {
+        $jsonLdNodes = $xpath->query('//script[@type="application/ld+json"]');
+        
+        foreach ($jsonLdNodes as $node) {
+            try {
+                $jsonData = json_decode($node->textContent, true);
+                
+                if ($jsonData && is_array($jsonData)) {
+                    $metadata['structured_data'] = $jsonData;
+                    
+                    // Extract common fields from structured data
+                    if (isset($jsonData['name'])) {
+                        $metadata['database_fields']['title'] = $jsonData['name'];
+                    }
+                    
+                    if (isset($jsonData['description'])) {
+                        $metadata['database_fields']['summary'] = $jsonData['description'];
+                    }
+                    
+                    if (isset($jsonData['datePublished'])) {
+                        try {
+                            $parsedDate = Carbon::parse($jsonData['datePublished'])->format('Y-m-d');
+                            $metadata['database_fields']['publication_date'] = $parsedDate;
+                        } catch (\Exception $e) {
+                            // Ignore parsing errors
+                        }
+                    }
+                    
+                    if (isset($jsonData['author']['name'])) {
+                        $metadata['database_fields']['government_entity_name'] = $jsonData['author']['name'];
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to parse JSON-LD data', [
+                    'error' => $e->getMessage()
+                ]);
+            }
         }
     }
 
