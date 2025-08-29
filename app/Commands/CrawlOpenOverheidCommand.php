@@ -129,16 +129,14 @@ class CrawlOpenOverheidCommand extends Command
         mkdir($tempDir, 0755, true);
         
         try {
+            // Try with chromium-browser binary explicitly
             $client = PantherClient::createChromeClient($driverPath, [
-                '--headless=new',
+                '--headless',
                 '--no-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
                 '--disable-web-security',
                 '--disable-features=VizDisplayCompositor',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding',
                 '--disable-extensions',
                 '--disable-plugins',
                 '--disable-default-apps',
@@ -147,32 +145,38 @@ class CrawlOpenOverheidCommand extends Command
                 '--no-default-browser-check',
                 '--window-size=1920,1080',
                 '--user-data-dir=' . $tempDir,
-                '--single-process',
+                '--disable-software-rasterizer',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-field-trial-config',
                 '--disable-ipc-flooding-protection',
-            ]);
+            ], [], 'chromium-browser');
         } catch (\Exception $e) {
-            $this->error("Failed to create Chrome client with advanced options: " . $e->getMessage());
-            $this->info("Trying fallback configuration...");
+            $this->error("Failed with chromium-browser: " . $e->getMessage());
+            $this->info("Trying with google-chrome...");
             
-            // Fallback: Try minimal configuration
             try {
                 $client = PantherClient::createChromeClient($driverPath, [
                     '--headless',
                     '--no-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
-                    '--remote-debugging-port=9222',
+                    '--disable-web-security',
+                    '--window-size=1920,1080',
                     '--user-data-dir=' . $tempDir,
-                ]);
+                ], [], 'google-chrome');
             } catch (\Exception $fallbackError) {
-                $this->error("Fallback configuration also failed: " . $fallbackError->getMessage());
+                $this->error("Failed with google-chrome: " . $fallbackError->getMessage());
+                $this->info("Trying minimal configuration...");
                 
-                // Final fallback: Try without user-data-dir
+                // Final fallback: Minimal configuration without specifying browser
                 $client = PantherClient::createChromeClient($driverPath, [
                     '--headless',
                     '--no-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
+                    '--remote-debugging-port=9222',
                 ]);
             }
         }
