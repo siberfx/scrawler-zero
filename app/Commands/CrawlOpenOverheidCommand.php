@@ -117,19 +117,29 @@ class CrawlOpenOverheidCommand extends Command
         $this->killExistingChromeDrivers();
 
         // Create Chrome client in headless mode (no visible browser window)
+        $tempDir = '/tmp/chrome-' . uniqid();
+        mkdir($tempDir, 0755, true);
+        
         $client = PantherClient::createChromeClient($driverPath, [
-            '--headless',
+            '--headless=new',
             '--no-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--disable-web-security',
             '--disable-features=VizDisplayCompositor',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-extensions',
+            '--disable-plugins',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--no-first-run',
+            '--no-default-browser-check',
             '--window-size=1920,1080',
-            '--remote-debugging-port=0', // Use random available port
-            '--user-data-dir=/tmp/chrome-user-data-' . uniqid(), // Unique temp directory
-            '--data-path=/tmp/chrome-data-' . uniqid(),
-            '--disk-cache-dir=/tmp/chrome-cache-' . uniqid(),
-            '--crash-dumps-dir=/tmp/chrome-crashes-' . uniqid(),
+            '--user-data-dir=' . $tempDir,
+            '--single-process',
+            '--disable-ipc-flooding-protection',
         ]);
 
         while (true) {
@@ -182,6 +192,12 @@ class CrawlOpenOverheidCommand extends Command
         }
 
         $client->quit();
+        
+        // Clean up temp directory
+        if (isset($tempDir) && is_dir($tempDir)) {
+            exec("rm -rf " . escapeshellarg($tempDir));
+        }
+        
         $this->info("Crawling finished. Processed: {$processedCount} (Created: {$createdCount}, Updated: {$updatedCount})");
 
         return 0;
