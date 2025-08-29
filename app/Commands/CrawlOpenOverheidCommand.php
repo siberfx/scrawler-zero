@@ -192,7 +192,7 @@ class CrawlOpenOverheidCommand extends Command
         }
 
         while (true) {
-            $url = "{$baseUrl}?filter-id--organisatie={$filterId}&page={$page}&pagina={$page}";
+            $url = "{$baseUrl}?filter-id--organisatie={$filterId}&pagina={$page}";
             $this->info("Crawling page: {$page} -> {$url}");
 
             try {
