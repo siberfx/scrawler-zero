@@ -192,7 +192,7 @@ class CrawlOpenOverheidCommand extends Command
         }
 
         while (true) {
-            $url = "{$baseUrl}?filter-id--organisatie={$filterId}&organisatie={$organisation}&page={$page}";
+            $url = "{$baseUrl}?filter-id--organisatie={$filterId}&page={$page}&pagina={$page}";
             $this->info("Crawling page: {$page} -> {$url}");
 
             try {
@@ -258,7 +258,7 @@ class CrawlOpenOverheidCommand extends Command
     protected function crawlWithHttp(string $baseUrl, string $organisation, string $filterId, int $page, int &$processedCount, int &$createdCount, int &$updatedCount): int
     {
         while (true) {
-            $url = "{$baseUrl}?filter-id--organisatie={$filterId}&organisatie={$organisation}&page={$page}";
+            $url = "{$baseUrl}?filter-id--organisatie={$filterId}&pagina={$page}";
             $this->info("Crawling page: {$page} -> {$url}");
 
             try {
