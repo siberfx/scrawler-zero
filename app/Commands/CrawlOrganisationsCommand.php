@@ -195,6 +195,12 @@ class CrawlOrganisationsCommand extends Command
             $urlParts = explode('/', $url);
             $id = $urlParts[count($urlParts) - 2] ?? null;
 
+            // Generate PID from organization ID and type
+            $pid = null;
+            if ($id) {
+                $pid = $this->generatePidFromId($id, $type);
+            }
+
             // Create organization data structure with placeholders for addresses and relations
             // These will be populated with real data when processing organization details
             $organizations[] = [
@@ -204,10 +210,12 @@ class CrawlOrganisationsCommand extends Command
                 'slug' => Str::slug($name),
                 'type' => $type->value,
                 'category' => $type->label(), // Store the category name for later processing
+                'pid' => $pid, // Store the generated PID
                 'raw_data' => [
                     'crawled_at' => now()->toIso8601String(),
                     'source_url' => $this->url,
                     'id' => $id,
+                    'pid' => $pid, // Also store in raw data for reference
                     'type' => $type->value,
                     'category' => $type->label(), // Also store in raw data for reference
                     // Add empty arrays for addresses and relations
@@ -340,6 +348,34 @@ class CrawlOrganisationsCommand extends Command
         if ($addressesCreated > 0 || $relationsCreated > 0 || $categoriesCreated > 0) {
             $this->info("Addresses created: {$addressesCreated}, Relations created: {$relationsCreated}, Categories created: {$categoriesCreated}");
         }
+    }
+
+    /**
+     * Generate PID from organization ID and type
+     * 
+     * @param string $id Organization ID from URL
+     * @param OrganizationType $type Organization type
+     * @return string|null Generated PID
+     */
+    protected function generatePidFromId(string $id, OrganizationType $type): ?string
+    {
+        if (empty($id)) {
+            return null;
+        }
+
+        // Generate PID based on organization type and ID
+        // Format: nl.{type_prefix}{id}
+        $typePrefix = match($type) {
+            OrganizationType::MINISTERIE => 'mnre',
+            OrganizationType::GEMEENTE => 'gm',
+            OrganizationType::PROVINCIE => 'pv',
+            OrganizationType::WATERSCHAP => 'ws',
+            OrganizationType::ZELFSTANDIG_BESTUURSORGAAN => 'zbo',
+            OrganizationType::RECHTSPERSOON_MET_WOO_TAAK => 'rwt',
+            default => 'org', // Generic prefix for other types
+        };
+
+        return "nl.{$typePrefix}{$id}";
     }
 
     /**

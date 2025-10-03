@@ -66,6 +66,13 @@ class ScheduleCommand extends Command
             ->runInBackground()
             ->appendOutputTo(base_path('logs/documents-process.log'));
 
+        // Fetch PID data daily at 4:00 AM (after organizations are processed)
+        $schedule->command('pid:fetch --pid=nl.mnre1058 --save-to-db --save-relational')
+            ->dailyAt('04:00')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(base_path('logs/pid-fetch.log'));
+
         // Cleanup old logs weekly
         $schedule->call(function () {
             $logPath = base_path('logs');

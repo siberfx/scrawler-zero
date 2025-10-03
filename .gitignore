@@ -5,3 +5,5 @@
 .phpunit.result.cache
 .env
 /database/database.sqlite
+/storage/**/*.json
+/logs/**/*.log

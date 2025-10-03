@@ -4,19 +4,17 @@ namespace App\Models;
 
 use App\Enums\OrganizationType;
 use App\Helpers\Variable;
-use MongoDB\Laravel\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Laravel\Scout\Searchable;
-use Siberfx\Typesense\Interfaces\TypesenseDocument;
+use MongoDB\Laravel\Eloquent\Model;
 
 /**
  * @mixin IdeHelperOrganization
  */
-class Organization extends Model implements TypesenseDocument
+class Organization extends Model
 {
-    use Searchable, SoftDeletes;
+    use SoftDeletes;
 
     protected $connection = 'mongodb';
 
@@ -32,6 +30,8 @@ class Organization extends Model implements TypesenseDocument
         'details',
         'details_processed',
         'last_processed_at',
+        // PID identifier for filtering and linking
+        'pid',
         // Organization details (organisatiegegevens)
         'visit_address',
         'postal_address',
@@ -113,6 +113,7 @@ class Organization extends Model implements TypesenseDocument
             'created_at' => $this->created_at?->timestamp ?? time(),
             'category_id' => $this->category_id,
             'category' => $this->category?->name ?? '-',
+            'pid' => $this->pid ? (string) $this->pid : '',
             // Include structured fields - ensure all are strings
             'visit_address' => $this->visit_address ? (string) $this->visit_address : '',
             'postal_address' => $this->postal_address ? (string) $this->postal_address : '',
@@ -365,6 +366,7 @@ class Organization extends Model implements TypesenseDocument
             'type',
             'type_label',
             'category',
+            'pid',
             'visit_address',
             'postal_address',
             'phone',
