@@ -41,37 +41,42 @@ class ScheduleCommand extends Command
         // Crawl organizations daily at 2:00 AM
         $schedule->command('organizations:crawl')
             ->dailyAt('02:00')
-            ->withoutOverlapping()
+            ->withoutOverlapping(1440) // 24 hours timeout
             ->runInBackground()
-            ->appendOutputTo(base_path('logs/organizations-crawl.log'));
+            ->appendOutputTo(base_path('logs/organizations-crawl.log'))
+            ->onOneServer(); // Ensure only one server runs this
 
         // Crawl OpenOverheid documents every 6 hours
         $schedule->command('openoverheid:crawl')
             ->everySixHours()
-            ->withoutOverlapping()
+            ->withoutOverlapping(360) // 6 hours timeout
             ->runInBackground()
-            ->appendOutputTo(base_path('logs/openoverheid-crawl.log'));
+            ->appendOutputTo(base_path('logs/openoverheid-crawl.log'))
+            ->onOneServer();
 
         // Process organization details daily at 3:00 AM (after organizations crawl)
         $schedule->command('organizations:process-details --limit=500')
             ->dailyAt('03:00')
-            ->withoutOverlapping()
+            ->withoutOverlapping(1440) // 24 hours timeout
             ->runInBackground()
-            ->appendOutputTo(base_path('logs/organizations-process.log'));
+            ->appendOutputTo(base_path('logs/organizations-process.log'))
+            ->onOneServer();
 
         // Process documents every 2 hours
         $schedule->command('documents:process --limit=50')
             ->everyTwoHours()
-            ->withoutOverlapping()
+            ->withoutOverlapping(120) // 2 hours timeout
             ->runInBackground()
-            ->appendOutputTo(base_path('logs/documents-process.log'));
+            ->appendOutputTo(base_path('logs/documents-process.log'))
+            ->onOneServer();
 
         // Fetch PID data daily at 4:00 AM (after organizations are processed)
         $schedule->command('pid:fetch --pid=nl.mnre1058 --save-to-db --save-relational')
             ->dailyAt('04:00')
-            ->withoutOverlapping()
+            ->withoutOverlapping(1440) // 24 hours timeout
             ->runInBackground()
-            ->appendOutputTo(base_path('logs/pid-fetch.log'));
+            ->appendOutputTo(base_path('logs/pid-fetch.log'))
+            ->onOneServer();
 
         // Cleanup old logs weekly
         $schedule->call(function () {
