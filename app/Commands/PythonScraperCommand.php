@@ -44,11 +44,20 @@ class PythonScraperCommand extends Command
         // Build Python command
         $pythonScript = base_path('bin/python-scrawler/mongodb_url_scraper.py');
         $monitorScript = base_path('bin/python-scrawler/mongodb_monitor.py');
+        
+        // Detect Python executable (python3 on Linux, python on Windows)
+        $pythonExecutable = PHP_OS_FAMILY === 'Windows' ? 'python' : 'python3';
+        
+        // Check if we're in a virtual environment
+        $venvPython = base_path('bin/python-scrawler/venv/bin/python');
+        if (file_exists($venvPython)) {
+            $pythonExecutable = $venvPython;
+        }
 
         if ($action === 'monitor') {
-            $command = ['python', $monitorScript];
+            $command = [$pythonExecutable, $monitorScript];
         } else {
-            $command = ['python', $pythonScript, $action];
+            $command = [$pythonExecutable, $pythonScript, $action];
             if ($limit && $action === 'process') {
                 $command[] = $limit;
             }

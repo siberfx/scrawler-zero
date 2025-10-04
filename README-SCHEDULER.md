@@ -67,6 +67,12 @@ source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Install Playwright browsers
+playwright install
+
+# Install Playwright system dependencies
+sudo playwright install-deps
 ```
 
 **For Linux/Ubuntu (Alternative Methods):**
@@ -76,10 +82,17 @@ pipx install -r requirements.txt
 
 # Method 2: Force system-wide installation (NOT RECOMMENDED)
 pip install -r requirements.txt --break-system-packages
+playwright install
+sudo playwright install-deps
 
 # Method 3: Install system packages (if available)
 sudo apt update
 sudo apt install python3-pymongo python3-requests python3-beautifulsoup4
+
+# Method 4: Manual system dependencies (if playwright install-deps fails)
+sudo apt-get install libnspr4 libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 \
+    libatspi2.0-0t64 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+    libgbm1 libasound2t64
 ```
 
 #### Verify Installation
@@ -101,8 +114,14 @@ source venv/bin/activate
 # Test Python MongoDB connection
 python mongodb_monitor.py
 
+# Test Playwright installation
+playwright --version
+
 # Check if all packages are installed
 pip list
+
+# Verify browser installation
+ls ~/.cache/ms-playwright/
 
 # Deactivate when done (optional)
 deactivate
