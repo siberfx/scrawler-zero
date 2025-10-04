@@ -616,27 +616,63 @@ class CrawlOpenOverheidCommand extends Command
     }
 
     /**
-     * Store documents in database
+     * Store documents in database with robust duplicate prevention
      */
     protected function storeDocuments(array $documents): int
     {
         $createdCount = 0;
         $updatedCount = 0;
+        $skippedCount = 0;
 
+        // Remove duplicates within the current batch first
+        $uniqueDocuments = [];
+        $seenUrls = [];
+        
         foreach ($documents as $docData) {
+            $url = $docData['source_url'];
+            if (!isset($seenUrls[$url])) {
+                $seenUrls[$url] = true;
+                $uniqueDocuments[] = $docData;
+            } else {
+                $skippedCount++;
+                $this->line("  Skipping duplicate URL in batch: {$url}");
+            }
+        }
+
+        foreach ($uniqueDocuments as $docData) {
             Document::withoutSyncingToSearch(function () use ($docData, &$createdCount, &$updatedCount) {
-                $document = Document::where('source_url', $docData['source_url'])->first();
-                if ($document) {
-                    $document->update($docData);
-                    $updatedCount++;
-                } else {
-                    Document::create($docData);
-                    $createdCount++;
+                try {
+                    // Use updateOrCreate for atomic upsert operation
+                    $document = Document::updateOrCreate(
+                        ['source_url' => $docData['source_url']], // Unique constraint
+                        $docData // Data to update/create
+                    );
+                    
+                    if ($document->wasRecentlyCreated) {
+                        $createdCount++;
+                    } else {
+                        $updatedCount++;
+                    }
+                } catch (\Exception $e) {
+                    // Handle potential duplicate key errors gracefully
+                    if (str_contains($e->getMessage(), 'duplicate') || str_contains($e->getMessage(), 'unique')) {
+                        // Document already exists, try to update it
+                        $document = Document::where('source_url', $docData['source_url'])->first();
+                        if ($document) {
+                            $document->update($docData);
+                            $updatedCount++;
+                        }
+                    } else {
+                        throw $e; // Re-throw if it's not a duplicate error
+                    }
                 }
             });
         }
 
         $this->info("✓ Stored documents: Created {$createdCount}, Updated {$updatedCount}");
+        if ($skippedCount > 0) {
+            $this->info("  Skipped {$skippedCount} duplicate URLs in current batch");
+        }
 
         return 0;
     }

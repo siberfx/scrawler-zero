@@ -65,18 +65,36 @@ class ProcessPythonUrlsCommand extends Command
                     $documentData = $this->convertUrlToDocument($urlDoc);
                     
                     if ($documentData) {
-                        // Check if document already exists
-                        $existingDoc = Document::where('source_url', $documentData['source_url'])->first();
-                        
-                        if ($existingDoc) {
-                            $existingDoc->update($documentData);
-                            $updatedCount++;
-                            $this->line("  ✓ Updated: {$documentData['title']}");
-                        } else {
-                            Document::create($documentData);
-                            $createdCount++;
-                            $this->line("  ✓ Created: {$documentData['title']}");
-                        }
+                        // Use updateOrCreate for atomic upsert operation to prevent duplicates
+                        Document::withoutSyncingToSearch(function () use ($documentData, &$createdCount, &$updatedCount) {
+                            try {
+                                $document = Document::updateOrCreate(
+                                    ['source_url' => $documentData['source_url']], // Unique constraint
+                                    $documentData // Data to update/create
+                                );
+                                
+                                if ($document->wasRecentlyCreated) {
+                                    $createdCount++;
+                                    $this->line("  ✓ Created: {$documentData['title']}");
+                                } else {
+                                    $updatedCount++;
+                                    $this->line("  ✓ Updated: {$documentData['title']}");
+                                }
+                            } catch (\Exception $e) {
+                                // Handle potential duplicate key errors gracefully
+                                if (str_contains($e->getMessage(), 'duplicate') || str_contains($e->getMessage(), 'unique')) {
+                                    // Document already exists, try to update it
+                                    $document = Document::where('source_url', $documentData['source_url'])->first();
+                                    if ($document) {
+                                        $document->update($documentData);
+                                        $updatedCount++;
+                                        $this->line("  ✓ Updated (fallback): {$documentData['title']}");
+                                    }
+                                } else {
+                                    throw $e; // Re-throw if it's not a duplicate error
+                                }
+                            }
+                        });
                     } else {
                         $errorCount++;
                         $this->line("  ✗ Skipped: {$urlDoc['url']} (no valid data)");
