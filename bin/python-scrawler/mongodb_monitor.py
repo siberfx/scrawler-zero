@@ -4,7 +4,7 @@ Simple MongoDB progress monitor for URL scraping
 """
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 
@@ -32,8 +32,7 @@ def get_stats(collection):
         unprocessed = collection.count_documents({"processed": False})
         
         # Get recently processed (last 10 minutes)
-        ten_min_ago = datetime.utcnow()
-        ten_min_ago = ten_min_ago.replace(minute=ten_min_ago.minute - 10)
+        ten_min_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
         recent = collection.count_documents({
             "processed": True,
             "processed_at": {"$gte": ten_min_ago}

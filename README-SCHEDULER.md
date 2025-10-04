@@ -41,6 +41,8 @@ The following commands are configured to run automatically:
 Before setting up the scheduler, ensure all Python dependencies are installed:
 
 #### Install Python Requirements
+
+**For Windows:**
 ```bash
 # Navigate to the project directory
 cd X:\laragon\www\scrawler\bin\python-scrawler
@@ -50,20 +52,69 @@ pip install -r requirements.txt
 
 # Alternative: Use pip3 if you have multiple Python versions
 pip3 install -r requirements.txt
+```
 
-# For virtual environment (recommended):
-python -m venv venv
-venv\Scripts\activate
+**For Linux/Ubuntu (Recommended - Virtual Environment):**
+```bash
+# Navigate to the project directory
+cd ~/worker.opub.nl/bin/python-scrawler
+
+# Create virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
+**For Linux/Ubuntu (Alternative Methods):**
+```bash
+# Method 1: Using pipx (if available)
+pipx install -r requirements.txt
+
+# Method 2: Force system-wide installation (NOT RECOMMENDED)
+pip install -r requirements.txt --break-system-packages
+
+# Method 3: Install system packages (if available)
+sudo apt update
+sudo apt install python3-pymongo python3-requests python3-beautifulsoup4
+```
+
 #### Verify Installation
+
+**For Windows:**
 ```bash
 # Test Python MongoDB connection
-python bin/python-scrawler/mongodb_monitor.py
+python mongodb_monitor.py
 
 # Check if all packages are installed
 pip list
+```
+
+**For Linux/Ubuntu (with virtual environment):**
+```bash
+# Make sure virtual environment is activated
+source venv/bin/activate
+
+# Test Python MongoDB connection
+python mongodb_monitor.py
+
+# Check if all packages are installed
+pip list
+
+# Deactivate when done (optional)
+deactivate
+```
+
+**For Linux/Ubuntu (system-wide):**
+```bash
+# Test Python MongoDB connection
+python3 mongodb_monitor.py
+
+# Check system packages
+dpkg -l | grep python3-
 ```
 
 ### Option 1: Windows Task Scheduler (Recommended)
