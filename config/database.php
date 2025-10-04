@@ -111,7 +111,7 @@ return [
 
         'mongodb' => [
             'driver' => 'mongodb',
-            'host' => env('DB_HOST', '45.140.140.16'),
+            'host' => env('DB_HOST', '212.132.107.72'),
             'port' => env('DB_PORT', 27017),
             'database' => env('DB_DATABASE', 'scrawler'),
             'username' => env('DB_USERNAME', 'root'),

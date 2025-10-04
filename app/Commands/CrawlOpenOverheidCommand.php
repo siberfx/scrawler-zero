@@ -3,14 +3,10 @@
 namespace App\Commands;
 
 use App\Models\Document;
-use Facebook\WebDriver\Exception\NoSuchElementException;
-use Facebook\WebDriver\WebDriverBy;
 use Illuminate\Console\Command;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Symfony\Component\Panther\Client as PantherClient;
-use Symfony\Component\Panther\DomCrawler\Crawler;
 
 class CrawlOpenOverheidCommand extends Command
 {
@@ -23,14 +19,15 @@ class CrawlOpenOverheidCommand extends Command
                             {--organisation=mnre1058 : The organisation identifier} 
                             {--filter-id=min : The filter-id} 
                             {--page=1 : The page number to start from}
-                            {--use-http : Use HTTP client instead of browser automation}';
+                            {--method=api : Crawling method (api|http|external)}
+                            {--limit=50 : Maximum number of documents to process}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Crawl open.overheid.nl search results and store them in the database';
+    protected $description = 'Crawl open.overheid.nl search results using Chrome-free methods (API discovery, HTTP, external rendering)';
 
     /**
      * Execute the console command.
@@ -40,235 +37,49 @@ class CrawlOpenOverheidCommand extends Command
         $organisation = $this->option('organisation');
         $filterId = $this->option('filter-id');
         $page = (int) $this->option('page');
-        $useHttp = $this->option('use-http');
+        $method = $this->option('method');
+        $limit = (int) $this->option('limit');
 
-        $baseUrl = 'https://open.overheid.nl/zoeken';
-        $processedCount = 0;
-        // Check if site requires JavaScript (React SPA)
-        if ($this->option('use-http')) {
-            $this->warn('HTTP-based crawling is not supported for the new React SPA version of open.overheid.nl');
-            $this->info('The site now requires JavaScript execution. Switching to browser automation...');
-        }
+        $this->info("Starting Chrome-free crawler for open.overheid.nl");
+        $this->info("Method: {$method} | Organisation: {$organisation} | Filter: {$filterId}");
 
-        $createdCount = 0;
-        $updatedCount = 0;
-
-        $this->info('Starting open.overheid.nl crawler with Panther...');
-
-        // Determine the correct ChromeDriver executable based on the operating system
-        if (PHP_OS_FAMILY === 'Windows') {
-            $driverPath = base_path('drivers/chromedriver.exe');
-        } else {
-            // Try common ChromeDriver locations on Linux
-            $possiblePaths = [
-                '/usr/local/bin/chromedriver',
-                '/usr/bin/chromedriver',
-                '/home/chrome/chromedriver',
-                base_path('drivers/chromedriver'),
-            ];
-
-            $driverPath = null;
-            foreach ($possiblePaths as $path) {
-                if (file_exists($path)) {
-                    $driverPath = $path;
-                    break;
-                }
-            }
-        }
-
-        // Check if the driver exists
-        if (! $driverPath || ! file_exists($driverPath)) {
-            $this->error('ChromeDriver not found. Searched locations:');
-            if (PHP_OS_FAMILY === 'Windows') {
-                $this->error("- {$driverPath}");
-            } else {
-                foreach ($possiblePaths as $path) {
-                    $this->error("- {$path}");
-                }
-            }
-            $this->info('Please install ChromeDriver:');
-            $this->info('Ubuntu: sudo apt-get install chromium-chromedriver');
-            $this->info('Or download from: https://chromedriver.chromium.org/');
-
-            return 1;
-        }
-
-        // Check if the driver is executable
-        if (! is_executable($driverPath)) {
-            $this->error("ChromeDriver found at {$driverPath} but is not executable.");
-            $this->info("Run: sudo chmod +x {$driverPath}");
-
-            return 1;
-        }
-
-        // Test ChromeDriver execution
-        $testCommand = escapeshellarg($driverPath).' --version 2>&1';
-        exec($testCommand, $output, $returnCode);
-
-        if ($returnCode !== 0) {
-            $this->error('ChromeDriver execution test failed:');
-            $this->error("Command: {$testCommand}");
-            $this->error("Return code: {$returnCode}");
-            $this->error('Output: '.implode("\n", $output));
-
-            // Check for common issues
-            $this->info("\nTroubleshooting steps:");
-            $this->info('1. Verify Chrome/Chromium is installed: which google-chrome || which chromium-browser');
-            $this->info('2. Check ChromeDriver compatibility with Chrome version');
-            $this->info('3. Install missing dependencies: sudo apt-get install libnss3 libgconf-2-4 libxss1 libappindicator1 libindicator7');
-
-            return 1;
-        }
-
-        $this->info("Using ChromeDriver at: {$driverPath}");
-        $this->info('ChromeDriver version: '.trim(implode(' ', $output)));
-
-        // Check Chrome installation and version
-        exec('google-chrome --version 2>/dev/null || chromium-browser --version 2>/dev/null', $chromeOutput, $chromeReturnCode);
-        if ($chromeReturnCode === 0 && ! empty($chromeOutput)) {
-            $this->info('Chrome version: '.trim($chromeOutput[0]));
-        } else {
-            $this->warn('Chrome/Chromium not found or not accessible. This may cause issues.');
-        }
-
-        // Kill any existing ChromeDriver processes to free up the port
-        $this->killExistingChromeDrivers();
-
-        // Create Chrome client in headless mode (no visible browser window)
-        $tempDir = '/tmp/chrome-'.uniqid();
-        mkdir($tempDir, 0755, true);
-
-        try {
-            // Try with chromium-browser binary explicitly
-            $client = PantherClient::createChromeClient($driverPath, [
-                '--headless',
-                '--no-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--disable-web-security',
-                '--disable-features=VizDisplayCompositor',
-                '--disable-extensions',
-                '--disable-plugins',
-                '--disable-default-apps',
-                '--disable-sync',
-                '--no-first-run',
-                '--no-default-browser-check',
-                '--window-size=1920,1080',
-                '--user-data-dir='.$tempDir,
-                '--disable-software-rasterizer',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding',
-                '--disable-field-trial-config',
-                '--disable-ipc-flooding-protection',
-            ], [], 'chromium-browser');
-        } catch (\Exception $e) {
-            $this->error('Failed with chromium-browser: '.$e->getMessage());
-            $this->info('Trying with google-chrome...');
-
-            try {
-                $client = PantherClient::createChromeClient($driverPath, [
-                    '--headless',
-                    '--no-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--disable-web-security',
-                    '--window-size=1920,1080',
-                    '--user-data-dir='.$tempDir,
-                ], [], 'google-chrome');
-            } catch (\Exception $fallbackError) {
-                $this->error('Failed with google-chrome: '.$fallbackError->getMessage());
-                $this->info('Trying minimal configuration...');
-
-                // Final fallback: Minimal configuration without specifying browser
-                $client = PantherClient::createChromeClient($driverPath, [
-                    '--headless',
-                    '--no-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--remote-debugging-port=9222',
-                ]);
-            }
-        }
-
-        while (true) {
-            $url = "{$baseUrl}?filter-id--organisatie={$filterId}&pagina={$page}";
-            $this->info("Crawling page: {$page} -> {$url}");
-
-            try {
-                $crawler = $client->request('GET', $url);
-
-                $client->waitFor('div.result--list', 30); // Wait up to 30 seconds for the results to appear
-
-                $documents = $this->parseDocuments($crawler, $organisation);
-
-                if (empty($documents)) {
-                    $this->info('No more documents found on this page. Ending crawl.');
-                    break;
-                }
-
-                $this->info('Found '.count($documents).' documents on this page.');
-
-                foreach ($documents as $docData) {
-                    Document::withoutSyncingToSearch(function () use ($docData, &$createdCount, &$updatedCount) {
-                        $document = Document::where('source_url', $docData['source_url'])->first();
-                        if ($document) {
-                            $document->update($docData);
-                            $updatedCount++;
-                        } else {
-                            Document::create($docData);
-                            $createdCount++;
-                        }
-                    });
-                    $processedCount++;
-                }
-
-                // Check if there is a 'next' page link
-                $nextLink = $crawler->filter('.pagination .next a');
-                if ($nextLink->count() === 0) {
-                    $this->info('No next page link found. Ending crawl.');
-                    break;
-                }
-
-                $page++;
-                sleep(1); // Be a good citizen
-
-            } catch (\Exception $e) {
-                $this->error("An error occurred: {$e->getMessage()}");
-                Log::error('CrawlOpenOverheidCommand Error', ['exception' => $e]);
-                break;
-            }
-        }
-
-        $client->quit();
-
-        // Clean up temp directory
-        if (isset($tempDir) && is_dir($tempDir)) {
-            exec('rm -rf '.escapeshellarg($tempDir));
-        }
-
-        $this->info("Crawling finished. Processed: {$processedCount} (Created: {$createdCount}, Updated: {$updatedCount})");
-
-        return 0;
+        // Route to appropriate crawling method
+        return match($method) {
+            'api' => $this->crawlWithApi($organisation, $filterId, $page, $limit),
+            'http' => $this->crawlWithHttp($organisation, $filterId, $page, $limit),
+            'external' => $this->crawlWithExternalRenderer($organisation, $filterId, $page, $limit),
+            default => $this->crawlWithApi($organisation, $filterId, $page, $limit),
+        };
     }
 
     /**
-     * Crawl using HTTP client instead of browser automation.
+     * Crawl using HTTP client (no browser needed)
      */
-    protected function crawlWithHttp(string $baseUrl, string $organisation, string $filterId, int $page, int &$processedCount, int &$createdCount, int &$updatedCount): int
+    protected function crawlWithHttp(string $organisation, string $filterId, int $page, int $limit): int
     {
-        while (true) {
+        $baseUrl = 'https://open.overheid.nl/zoeken';
+        $processedCount = 0;
+        $createdCount = 0;
+        $updatedCount = 0;
+        
+        $this->info('Using HTTP client method (no browser automation)...');
+        
+        while ($processedCount < $limit) {
             $url = "{$baseUrl}?filter-id--organisatie={$filterId}&pagina={$page}";
             $this->info("Crawling page: {$page} -> {$url}");
 
             try {
-                $response = Http::withHeaders([
+                $response = Http::withOptions([
+                    'verify' => false, // Disable SSL verification for development
+                    'timeout' => 30,
+                    'connect_timeout' => 10,
+                ])->withHeaders([
                     'User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
                     'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                     'Accept-Language' => 'en-US,en;q=0.5',
                     'Accept-Encoding' => 'gzip, deflate',
                     'Connection' => 'keep-alive',
-                ])->timeout(30)->get($url);
+                ])->get($url);
 
                 if (! $response->successful()) {
                     $this->error("HTTP request failed with status: {$response->status()}");
@@ -276,6 +87,16 @@ class CrawlOpenOverheidCommand extends Command
                 }
 
                 $html = $response->body();
+                
+                // Check if this is a React SPA
+                if (str_contains($html, 'You need to enable JavaScript') || str_contains($html, 'id="root"')) {
+                    $this->error("This is a React SPA that requires JavaScript execution.");
+                    $this->info("The HTTP method cannot handle JavaScript-based sites.");
+                    $this->info("Recommendation: Use your Python script with Playwright instead.");
+                    $this->info("Python command: python mongodb_url_scraper.py collect");
+                    return 1;
+                }
+                
                 $documents = $this->parseHtmlDocuments($html, $organisation);
 
                 if (empty($documents)) {
@@ -450,55 +271,503 @@ class CrawlOpenOverheidCommand extends Command
         return $metadata;
     }
 
+
     /**
-     * Parse the HTML content to extract documents (browser automation version).
+     * Try to crawl using API endpoints discovered through network interception (similar to Python script)
      */
-    protected function parseDocuments(Crawler $crawler, string $organisation): array
+    protected function crawlWithApi(string $organisation, string $filterId, int $page, int $limit): int
     {
-        $documents = [];
-
-        // Target the specific structure: div.result--list li items
-        $nodes = $crawler->filter('div.result--list li');
-
-        foreach ($nodes as $node) {
+        $this->info('Using network interception approach (similar to Python script)...');
+        
+        // Step 1: First try to discover API endpoints by intercepting network requests
+        $discoveredApis = $this->discoverApiEndpoints($filterId, $page);
+        
+        if (empty($discoveredApis)) {
+            $this->warn('No API endpoints discovered through network interception.');
+            $this->info('Falling back to common endpoint patterns...');
+            return $this->tryCommonApiEndpoints($organisation, $filterId, $page, $limit);
+        }
+        
+        // Step 2: Use discovered API endpoints
+        foreach ($discoveredApis as $apiInfo) {
+            $this->info("Using discovered API: {$apiInfo['url']}");
+            
             try {
-                $titleNode = $node->findElement(WebDriverBy::cssSelector('h2.result--title a'));
-                $title = trim($titleNode->getText());
-                $source_url = 'https://open.overheid.nl'.trim($titleNode->getAttribute('href'));
-
-                $documents[] = [
-                    'title' => $title,
-                    'source_url' => $source_url,
-                    'organisation_suffix' => $organisation, // Store the organisation for filtering
-                    'is_processed' => false, // Mark as unprocessed for later detailed fetching
-                    'fetch_timestamp' => now(),
-                ];
-            } catch (NoSuchElementException $e) {
-                // This can happen if a result item is an ad or has a different structure.
-                $this->warn('Skipping a result item that could not be parsed.');
-
-                continue;
+                $response = Http::withOptions([
+                    'verify' => false, // Disable SSL verification for development
+                    'timeout' => 30,
+                    'connect_timeout' => 10,
+                ])->withHeaders([
+                    'Accept' => 'application/json',
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Referer' => "https://open.overheid.nl/zoeken?filter-id--organisatie={$filterId}&pagina={$page}",
+                ])->get($apiInfo['url'], $apiInfo['params'] ?? []);
+                
+                if ($response->successful()) {
+                    $data = $response->json();
+                    if (!empty($data)) {
+                        $this->info("✓ Successfully retrieved data from discovered API");
+                        
+                        // Parse the API response similar to Python script
+                        $documents = $this->parseApiResponse($data, $organisation);
+                        
+                        if (!empty($documents)) {
+                            return $this->storeDocuments($documents);
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                $this->line("  ✗ API call failed: {$e->getMessage()}");
+                
+                // Log more details for debugging
+                if (str_contains($e->getMessage(), 'SSL certificate')) {
+                    $this->warn("  SSL certificate issue detected. Using verify=false to bypass.");
+                } elseif (str_contains($e->getMessage(), 'timeout')) {
+                    $this->warn("  Request timeout. The API might be slow or unavailable.");
+                } elseif (str_contains($e->getMessage(), 'Connection refused')) {
+                    $this->warn("  Connection refused. The API endpoint might not exist.");
+                }
             }
         }
-
+        
+        $this->error('All discovered API endpoints failed.');
+        return 1;
+    }
+    
+    /**
+     * Discover API endpoints by simulating browser behavior and intercepting requests
+     */
+    protected function discoverApiEndpoints(string $filterId, int $page): array
+    {
+        $this->info('Discovering API endpoints through network analysis...');
+        
+        $searchUrl = "https://open.overheid.nl/zoeken?filter-id--organisatie={$filterId}&pagina={$page}";
+        
+        try {
+            // Get the search page HTML
+            $response = Http::withOptions([
+                'verify' => false, // Disable SSL verification for development
+                'timeout' => 20,
+                'connect_timeout' => 10,
+            ])->withHeaders([
+                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language' => 'en-US,en;q=0.5',
+            ])->get($searchUrl);
+            
+            if (!$response->successful()) {
+                return [];
+            }
+            
+            $html = $response->body();
+            $discoveredApis = [];
+            
+            // Pattern 1: Look for Next.js API routes
+            if (preg_match_all('/"buildId":"([^"]+)"/', $html, $matches)) {
+                $buildId = $matches[1][0];
+                $this->info("Found Next.js build ID: {$buildId}");
+                
+                // Common Next.js API patterns
+                $nextjsApis = [
+                    "https://open.overheid.nl/_next/data/{$buildId}/zoeken.json",
+                    "https://open.overheid.nl/_next/data/{$buildId}/search.json",
+                    "https://open.overheid.nl/api/search",
+                ];
+                
+                foreach ($nextjsApis as $apiUrl) {
+                    $discoveredApis[] = [
+                        'url' => $apiUrl,
+                        'params' => [
+                            'filter-id--organisatie' => $filterId,
+                            'pagina' => $page,
+                        ],
+                        'type' => 'nextjs'
+                    ];
+                }
+            }
+            
+            // Pattern 2: Look for embedded API URLs in script tags
+            if (preg_match_all('/<script[^>]*>(.*?)<\/script>/s', $html, $scriptMatches)) {
+                foreach ($scriptMatches[1] as $scriptContent) {
+                    // Look for API endpoints in JavaScript
+                    $apiPatterns = [
+                        '/["\']([^"\']*\/api\/[^"\']*)["\']/',
+                        '/["\']([^"\']*\.json[^"\']*)["\']/',
+                        '/fetch\(["\']([^"\']+)["\']/',
+                        '/axios\.get\(["\']([^"\']+)["\']/',
+                    ];
+                    
+                    foreach ($apiPatterns as $pattern) {
+                        if (preg_match_all($pattern, $scriptContent, $apiMatches)) {
+                            foreach ($apiMatches[1] as $apiUrl) {
+                                if (str_contains($apiUrl, 'api') || str_contains($apiUrl, '.json')) {
+                                    // Make URL absolute
+                                    if (str_starts_with($apiUrl, '/')) {
+                                        $apiUrl = 'https://open.overheid.nl' . $apiUrl;
+                                    }
+                                    
+                                    $discoveredApis[] = [
+                                        'url' => $apiUrl,
+                                        'params' => [
+                                            'organisation' => $filterId,
+                                            'page' => $page,
+                                        ],
+                                        'type' => 'discovered'
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Pattern 3: Look for data attributes that might contain API info
+            if (preg_match_all('/data-api[^=]*=["\']([^"\']+)["\']/', $html, $dataMatches)) {
+                foreach ($dataMatches[1] as $apiUrl) {
+                    if (str_starts_with($apiUrl, '/')) {
+                        $apiUrl = 'https://open.overheid.nl' . $apiUrl;
+                    }
+                    
+                    $discoveredApis[] = [
+                        'url' => $apiUrl,
+                        'params' => [],
+                        'type' => 'data-attribute'
+                    ];
+                }
+            }
+            
+            // Remove duplicates
+            $uniqueApis = [];
+            foreach ($discoveredApis as $api) {
+                $key = $api['url'];
+                if (!isset($uniqueApis[$key])) {
+                    $uniqueApis[$key] = $api;
+                }
+            }
+            
+            $this->info("Discovered " . count($uniqueApis) . " potential API endpoints");
+            foreach ($uniqueApis as $api) {
+                $this->line("  - {$api['url']} ({$api['type']})");
+            }
+            
+            return array_values($uniqueApis);
+            
+        } catch (\Exception $e) {
+            $this->error("Error discovering API endpoints: {$e->getMessage()}");
+            return [];
+        }
+    }
+    
+    /**
+     * Try common API endpoint patterns as fallback
+     */
+    protected function tryCommonApiEndpoints(string $organisation, string $filterId, int $page, int $limit): int
+    {
+        $this->info('Trying common API endpoint patterns...');
+        
+        // Common API endpoint patterns based on typical React SPA structures
+        // Focus on more realistic endpoints and avoid problematic SSL domains
+        $apiEndpoints = [
+            'https://open.overheid.nl/api/search',
+            'https://open.overheid.nl/api/v1/search', 
+            'https://open.overheid.nl/api/zoeken',
+            'https://open.overheid.nl/_next/data/search.json',
+            'https://open.overheid.nl/search.json',
+            // Note: Removed https://api.overheid.nl/search due to SSL issues
+        ];
+        
+        foreach ($apiEndpoints as $endpoint) {
+            $this->info("Trying API endpoint: {$endpoint}");
+            
+            try {
+                $response = Http::withOptions([
+                    'verify' => false, // Disable SSL verification for development
+                    'timeout' => 15,
+                    'connect_timeout' => 5,
+                ])->withHeaders([
+                    'Accept' => 'application/json',
+                    'User-Agent' => 'Mozilla/5.0 (compatible; ScrawlerBot/1.0)',
+                ])->get($endpoint, [
+                    'organisation' => $filterId,
+                    'filter-id--organisatie' => $filterId,
+                    'page' => $page,
+                    'pagina' => $page,
+                    'limit' => 20,
+                ]);
+                
+                if ($response->successful()) {
+                    $data = $response->json();
+                    if (!empty($data)) {
+                        $this->info("✓ Found working API endpoint: {$endpoint}");
+                        $this->info("Response structure: " . json_encode(array_keys($data), JSON_PRETTY_PRINT));
+                        
+                        $documents = $this->parseApiResponse($data, $organisation);
+                        if (!empty($documents)) {
+                            return $this->storeDocuments($documents);
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                $this->line("  ✗ Failed: {$e->getMessage()}");
+                
+                // Provide specific guidance for common errors
+                if (str_contains($e->getMessage(), 'SSL certificate')) {
+                    $this->warn("  SSL certificate issue. This is common in local development.");
+                    $this->info("  The command now uses verify=false to bypass SSL verification.");
+                } elseif (str_contains($e->getMessage(), 'timeout')) {
+                    $this->warn("  Request timeout. The endpoint might be slow or unavailable.");
+                } elseif (str_contains($e->getMessage(), '404')) {
+                    $this->line("  Endpoint not found (404). This is expected for non-existent APIs.");
+                }
+            }
+        }
+        
+        $this->error('No working API endpoints found.');
+        $this->info('Consider using --method=http or --method=external instead.');
+        return 1;
+    }
+    
+    /**
+     * Parse API response similar to Python script's extract_formatted_metadata
+     */
+    protected function parseApiResponse(array $data, string $organisation): array
+    {
+        $documents = [];
+        
+        // Try different response structures
+        $items = [];
+        
+        // Common API response patterns
+        if (isset($data['results'])) {
+            $items = $data['results'];
+        } elseif (isset($data['documents'])) {
+            $items = $data['documents'];
+        } elseif (isset($data['items'])) {
+            $items = $data['items'];
+        } elseif (isset($data['data'])) {
+            if (is_array($data['data'])) {
+                $items = $data['data'];
+            }
+        } else {
+            // If data is directly an array of items
+            if (is_array($data) && !empty($data)) {
+                $items = $data;
+            }
+        }
+        
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            
+            // Extract document information similar to Python script
+            $document = [
+                'organisation_suffix' => $organisation,
+                'is_processed' => false,
+                'fetch_timestamp' => now(),
+            ];
+            
+            // Title extraction
+            if (isset($item['title'])) {
+                $document['title'] = $item['title'];
+            } elseif (isset($item['officieleTitel'])) {
+                $document['title'] = $item['officieleTitel'];
+            } elseif (isset($item['titelcollectie']['officieleTitel'])) {
+                $document['title'] = $item['titelcollectie']['officieleTitel'];
+            }
+            
+            // URL extraction
+            if (isset($item['url'])) {
+                $document['source_url'] = $item['url'];
+            } elseif (isset($item['weblocatie'])) {
+                $document['source_url'] = $item['weblocatie'];
+            } elseif (isset($item['detail_url'])) {
+                $document['source_url'] = $item['detail_url'];
+            } elseif (isset($item['pid'])) {
+                $document['source_url'] = "https://open.overheid.nl/details/{$item['pid']}";
+            }
+            
+            // Additional metadata extraction (similar to Python script)
+            if (isset($item['pid'])) {
+                $document['pid'] = $item['pid'];
+            }
+            
+            if (isset($item['creatiedatum'])) {
+                $document['publication_date'] = $item['creatiedatum'];
+            }
+            
+            if (isset($item['documentsoort'])) {
+                $document['document_type'] = $item['documentsoort'];
+            }
+            
+            // Only add documents with required fields
+            if (!empty($document['title']) && !empty($document['source_url'])) {
+                $documents[] = $document;
+            }
+        }
+        
+        $this->info("Parsed " . count($documents) . " documents from API response");
         return $documents;
     }
-
+    
     /**
-     * Kill any existing ChromeDriver processes to free up ports.
+     * Store documents in database
      */
-    protected function killExistingChromeDrivers(): void
+    protected function storeDocuments(array $documents): int
     {
-        if (PHP_OS_FAMILY === 'Windows') {
-            // Kill ChromeDriver processes on Windows
-            exec('taskkill /F /IM chromedriver.exe 2>nul', $output, $returnCode);
-        } else {
-            // Kill ChromeDriver processes on Unix/Linux
-            exec('pkill -f chromedriver 2>/dev/null', $output, $returnCode);
+        $createdCount = 0;
+        $updatedCount = 0;
+        
+        foreach ($documents as $docData) {
+            Document::withoutSyncingToSearch(function () use ($docData, &$createdCount, &$updatedCount) {
+                $document = Document::where('source_url', $docData['source_url'])->first();
+                if ($document) {
+                    $document->update($docData);
+                    $updatedCount++;
+                } else {
+                    Document::create($docData);
+                    $createdCount++;
+                }
+            });
         }
-
-        // Give processes time to terminate
-        sleep(1);
+        
+        $this->info("✓ Stored documents: Created {$createdCount}, Updated {$updatedCount}");
+        return 0;
+    }
+    
+    /**
+     * Crawl using external JavaScript rendering service
+     */
+    protected function crawlWithExternalRenderer(string $organisation, string $filterId, int $page, int $limit): int
+    {
+        $this->info('Using external rendering services...');
+        
+        $baseUrl = 'https://open.overheid.nl/zoeken';
+        
+        // Free services that can render JavaScript
+        $renderingServices = [
+            'https://api.scrapfly.io/scrape' => [
+                'url' => "{$baseUrl}?filter-id--organisatie={$filterId}&pagina={$page}",
+                'render_js' => 'true',
+                'format' => 'html',
+            ],
+            // PhantomJSCloud (has free tier)
+            'https://phantomjscloud.com/api/browser/v2/ak-DEMO-KEY/' => [
+                'url' => "{$baseUrl}?filter-id--organisatie={$filterId}&pagina={$page}",
+                'renderType' => 'html',
+            ],
+        ];
+        
+        foreach ($renderingServices as $serviceUrl => $params) {
+            $this->info("Trying rendering service: {$serviceUrl}");
+            
+            try {
+                $response = Http::timeout(30)->post($serviceUrl, $params);
+                
+                if ($response->successful()) {
+                    $html = $response->body();
+                    
+                    if (str_contains($html, 'result--list') || str_contains($html, 'resultaten_lijst')) {
+                        $this->info("✓ Successfully rendered page with external service");
+                        
+                        $documents = $this->parseHtmlDocuments($html, $organisation);
+                        
+                        if (!empty($documents)) {
+                            $this->info('Found ' . count($documents) . ' documents');
+                            
+                            $createdCount = 0;
+                            $updatedCount = 0;
+                            
+                            foreach ($documents as $docData) {
+                                Document::withoutSyncingToSearch(function () use ($docData, &$createdCount, &$updatedCount) {
+                                    $document = Document::where('source_url', $docData['source_url'])->first();
+                                    if ($document) {
+                                        $document->update($docData);
+                                        $updatedCount++;
+                                    } else {
+                                        Document::create($docData);
+                                        $createdCount++;
+                                    }
+                                });
+                            }
+                            
+                            $this->info("Processed: Created {$createdCount}, Updated {$updatedCount}");
+                            return 0;
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                $this->line("  ✗ Failed: {$e->getMessage()}");
+            }
+        }
+        
+        $this->error('External rendering services failed or require API keys.');
+        $this->info('Consider signing up for a free tier at:');
+        $this->info('- ScrapFly: https://scrapfly.io/');
+        $this->info('- PhantomJSCloud: https://phantomjscloud.com/');
+        return 1;
+    }
+    
+    /**
+     * Try to extract data from page source or network requests
+     */
+    protected function crawlWithNetworkInspection(string $baseUrl, string $organisation, string $filterId, int $page): int
+    {
+        $this->info('Inspecting network requests...');
+        
+        $url = "{$baseUrl}?filter-id--organisatie={$filterId}&pagina={$page}";
+        
+        try {
+            // Get the initial page to inspect network calls
+            $response = Http::withHeaders([
+                'User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            ])->get($url);
+            
+            $html = $response->body();
+            
+            // Look for API calls in the page source
+            $patterns = [
+                '/fetch\(["\']([^"\']+api[^"\']*)["\']/',
+                '/axios\.get\(["\']([^"\']+)["\']/',
+                '/"apiUrl":\s*"([^"]+)"/',
+                '/data-api-endpoint=["\']([^"\']+)["\']/',
+            ];
+            
+            foreach ($patterns as $pattern) {
+                if (preg_match_all($pattern, $html, $matches)) {
+                    foreach ($matches[1] as $apiUrl) {
+                        $this->info("Found potential API URL: {$apiUrl}");
+                        
+                        // Try to call the discovered API
+                        try {
+                            $apiResponse = Http::withHeaders([
+                                'Accept' => 'application/json',
+                                'Referer' => $url,
+                            ])->get($apiUrl);
+                            
+                            if ($apiResponse->successful()) {
+                                $data = $apiResponse->json();
+                                if (!empty($data)) {
+                                    $this->info("✓ Working API found: {$apiUrl}");
+                                    $this->info("Response keys: " . implode(', ', array_keys($data)));
+                                    return 0;
+                                }
+                            }
+                        } catch (\Exception $e) {
+                            // Continue to next API
+                        }
+                    }
+                }
+            }
+            
+            $this->warn('No API endpoints discovered in page source.');
+            return 1;
+            
+        } catch (\Exception $e) {
+            $this->error("Network inspection failed: {$e->getMessage()}");
+            return 1;
+        }
     }
 
     /**

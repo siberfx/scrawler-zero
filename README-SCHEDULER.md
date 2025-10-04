@@ -36,6 +36,36 @@ The following commands are configured to run automatically:
 
 ## Setup Instructions
 
+### Prerequisites
+
+Before setting up the scheduler, ensure all Python dependencies are installed:
+
+#### Install Python Requirements
+```bash
+# Navigate to the project directory
+cd X:\laragon\www\scrawler\bin\python-scrawler
+
+# Install Python dependencies from requirements.txt
+pip install -r requirements.txt
+
+# Alternative: Use pip3 if you have multiple Python versions
+pip3 install -r requirements.txt
+
+# For virtual environment (recommended):
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+#### Verify Installation
+```bash
+# Test Python MongoDB connection
+python bin/python-scrawler/mongodb_monitor.py
+
+# Check if all packages are installed
+pip list
+```
+
 ### Option 1: Windows Task Scheduler (Recommended)
 
 1. **Run as Administrator**: Open PowerShell as Administrator
@@ -116,6 +146,120 @@ $schedule->command('command:name')
     ->withoutOverlapping()    // Prevent overlapping executions
     ->runInBackground()       // Run in background
     ->appendOutputTo($path);  // Log output to file
+```
+
+## Available Commands
+
+This Laravel Zero application provides several commands for web scraping and data management:
+
+### Python Scraper Commands
+
+#### `python:scraper`
+Run Python MongoDB scraper through Laravel with real-time output streaming.
+
+```bash
+# Collect URLs from organizations
+php scrawler python:scraper collect
+
+# Process collected URLs (with optional limit)
+php scrawler python:scraper process --limit=100
+
+# Monitor scraping progress in real-time
+php scrawler python:scraper monitor
+
+# Set custom timeout (default: 300 seconds)
+php scrawler python:scraper collect --timeout=600
+```
+
+### Organization Management Commands
+
+#### `crawl:organisations`
+Crawl and collect organization data from OpenOverheid.
+
+```bash
+# Crawl all organizations
+php scrawler crawl:organisations
+
+# Crawl with specific limit
+php scrawler crawl:organisations --limit=50
+```
+
+#### `crawl:openoverheid`
+Crawl documents from OpenOverheid using Chrome browser automation.
+
+```bash
+# Crawl OpenOverheid documents
+php scrawler crawl:openoverheid
+```
+
+### PID Data Management
+
+#### `fetch:pid-data`
+Fetch and process PID (Persistent Identifier) data for organizations.
+
+```bash
+# Fetch PID data for all organizations
+php scrawler fetch:pid-data
+
+# Fetch with specific limit
+php scrawler fetch:pid-data --limit=25
+```
+
+### Workflow Commands
+
+#### `workflow:full-scraping`
+Execute the complete scraping workflow in sequence.
+
+```bash
+# Run full workflow
+php scrawler workflow:full-scraping
+
+# Skip URL collection step
+php scrawler workflow:full-scraping --skip-collect
+
+# Skip URL processing step  
+php scrawler workflow:full-scraping --skip-process
+
+# Skip document conversion step
+php scrawler workflow:full-scraping --skip-convert
+
+# Set processing limits
+php scrawler workflow:full-scraping --collect-limit=100 --process-limit=50
+```
+
+### Data Processing Commands
+
+#### `process:python-urls`
+Convert processed Python URLs to Document records.
+
+```bash
+# Process all URLs
+php scrawler process:python-urls
+
+# Process with limit
+php scrawler process:python-urls --limit=100
+```
+
+### Utility Commands
+
+#### `test:mongo-connection`
+Test MongoDB connection and display database information.
+
+```bash
+php scrawler test:mongo-connection
+```
+
+### Command Chaining Examples
+
+```bash
+# Complete workflow with monitoring
+php scrawler workflow:full-scraping && php scrawler python:scraper monitor
+
+# Collect organizations then fetch PID data
+php scrawler crawl:organisations --limit=50 && php scrawler fetch:pid-data --limit=50
+
+# Process URLs in batches
+php scrawler python:scraper process --limit=25 && php scrawler process:python-urls --limit=25
 ```
 
 ## Troubleshooting
