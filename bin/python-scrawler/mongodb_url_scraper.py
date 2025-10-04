@@ -6,7 +6,7 @@ Goal: Store scraped data directly in MongoDB records, not JSON files
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urljoin
 
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
@@ -53,7 +53,7 @@ class MongoDBURLScraper:
                         "$setOnInsert": {
                             "url": url,
                             "processed": False,
-                            "created_at": datetime.utcnow(),
+                            "created_at": datetime.now(timezone.utc),
                             "raw_scraped_data": None,
                             "formatted_metadata": None
                         }
@@ -88,7 +88,7 @@ class MongoDBURLScraper:
                 {
                     "$set": {
                         "processed": True,
-                        "processed_at": datetime.utcnow(),
+                        "processed_at": datetime.now(timezone.utc),
                         "raw_scraped_data": raw_data,
                         "formatted_metadata": formatted_data
                     }
@@ -269,7 +269,7 @@ class MongoDBURLScraper:
             return {"detail_url": detail_url, "error": str(e), "captured": []}
         
         # Process captured JSON responses
-        result = {"detail_url": detail_url, "captured": [], "timestamp": datetime.utcnow().isoformat()}
+        result = {"detail_url": detail_url, "captured": [], "timestamp": datetime.now(timezone.utc).isoformat()}
         
         if captured_json:
             print(f"  [SUCCESS] Captured {len(captured_json)} JSON responses")
