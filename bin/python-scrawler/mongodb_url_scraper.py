@@ -95,6 +95,14 @@ class MongoDBURLScraper:
                 }
             )
             print(f"  [SUCCESS] Updated MongoDB record for {url}")
+            
+            # Show brief summary for production
+            if formatted_data:
+                title = formatted_data.get('officiele_titel', 'N/A')
+                org = formatted_data.get('verantwoordelijke_label', 'N/A')
+                doc_type = formatted_data.get('documentsoort', 'N/A')
+                print(f"  [INFO] {doc_type} from {org}")
+                print(f"  [INFO] Title: {title[:100]}{'...' if len(title) > 100 else ''}")
         except Exception as e:
             print(f"  [ERROR] Error updating MongoDB record: {e}")
 

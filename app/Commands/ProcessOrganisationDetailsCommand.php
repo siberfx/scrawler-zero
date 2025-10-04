@@ -521,13 +521,9 @@ class ProcessOrganisationDetailsCommand extends Command
     {
         $addresses = [];
 
-        // Debug: Log the structure of details
-        $this->info('DEBUG: Details structure: ' . json_encode(array_keys($details)));
-
         // First check if organisatiegegevens section exists and has table_data
         if (isset($details['organisatiegegevens']['table_data'])) {
             $orgData = $details['organisatiegegevens']['table_data'];
-            $this->info('DEBUG: Found organisatiegegevens with keys: ' . json_encode(array_keys($orgData)));
 
             // Extract postal address if available
             if (isset($orgData['postadres'])) {
@@ -583,7 +579,6 @@ class ProcessOrganisationDetailsCommand extends Command
         // Also check contactgegevens section
         if (isset($details['contactgegevens']['table_data'])) {
             $contactData = $details['contactgegevens']['table_data'];
-            $this->info('DEBUG: Found contactgegevens with keys: ' . json_encode(array_keys($contactData)));
 
             // Extract postal address if available and not already extracted
             if (isset($contactData['postadres']) && ! $this->hasAddressType($addresses, 'postadres')) {
@@ -667,7 +662,6 @@ class ProcessOrganisationDetailsCommand extends Command
             }
         }
 
-        $this->info('DEBUG: Extracted ' . count($addresses) . ' addresses: ' . json_encode($addresses));
         return $addresses;
     }
 
