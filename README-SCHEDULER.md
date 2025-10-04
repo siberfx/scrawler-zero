@@ -177,14 +177,23 @@ php scrawler schedule:list
 # Test organization crawling
 php scrawler organizations:crawl
 
-# Test document processing
-php scrawler documents:process --limit=10
-
-# Test organization details processing
+# Test organization details processing  
 php scrawler organizations:process-details --limit=10
 
 # Test OpenOverheid crawling
-php scrawler openoverheid:crawl --page=1
+php scrawler openoverheid:crawl --limit=50 --page=1
+
+# Test PID data fetching
+php scrawler pid:fetch --pid=nl.mnre1058 --save-to-db
+
+# Test Python scraper
+php scrawler python:scraper collect --timeout=600
+
+# Test full workflow
+php scrawler workflow:full-scraping --collect-limit=100
+
+# Test MongoDB connection
+php scrawler test:mongo-connection
 ```
 
 ## Configuration
@@ -243,36 +252,48 @@ php scrawler python:scraper collect --timeout=600
 
 ### Organization Management Commands
 
-#### `crawl:organisations`
+#### `organizations:crawl`
 Crawl and collect organization data from OpenOverheid.
 
 ```bash
 # Crawl all organizations
-php scrawler crawl:organisations
+php scrawler organizations:crawl
 
-# Crawl with specific limit
-php scrawler crawl:organisations --limit=50
+# Use custom XPath selector
+php scrawler organizations:crawl --selector="//a[@class='org-link']"
 ```
 
-#### `crawl:openoverheid`
+#### `openoverheid:crawl`
 Crawl documents from OpenOverheid using Chrome browser automation.
 
 ```bash
-# Crawl OpenOverheid documents
-php scrawler crawl:openoverheid
+# Crawl OpenOverheid documents with default settings
+php scrawler openoverheid:crawl
+
+# Crawl with specific options
+php scrawler openoverheid:crawl --organisation=mnre1058 --limit=50 --page=1
+
+# Use different crawling method
+php scrawler openoverheid:crawl --method=api --filter-id=min
 ```
 
 ### PID Data Management
 
-#### `fetch:pid-data`
+#### `pid:fetch`
 Fetch and process PID (Persistent Identifier) data for organizations.
 
 ```bash
-# Fetch PID data for all organizations
-php scrawler fetch:pid-data
+# Fetch specific PID data
+php scrawler pid:fetch --pid=nl.mnre1058 --save-to-db
 
-# Fetch with specific limit
-php scrawler fetch:pid-data --limit=25
+# Fetch and save to file
+php scrawler pid:fetch --pid=nl.mnre1058 --save-to-file
+
+# Examine JSON structure
+php scrawler pid:fetch --pid=nl.mnre1058 --examine
+
+# Save in relational structure
+php scrawler pid:fetch --pid=nl.mnre1058 --save-relational
 ```
 
 ### Workflow Commands

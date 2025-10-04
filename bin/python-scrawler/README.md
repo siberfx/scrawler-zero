@@ -77,7 +77,7 @@ Edit the MongoDB connection settings in `mongodb_url_scraper.py`:
 
 ```python
 MONGO_CONNECTION_STRING = "mongodb://username:password@host:port/"
-DB_NAME = "open_overheid"
+DB_NAME = "scrawler"
 COLLECTION_NAME = "urls"
 ```
 
