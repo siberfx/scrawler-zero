@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -18,16 +19,25 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::connection('mongodb')->table('documents', function (Blueprint $collection) {
-            // Add unique index on source_url to prevent URL duplicates
-            $collection->unique('source_url');
+        // Get the MongoDB collection directly to check existing indexes
+        $collection = DB::connection('mongodb')->getCollection('documents');
+        $existingIndexes = $collection->listIndexes();
+        
+        $indexNames = [];
+        foreach ($existingIndexes as $index) {
+            $indexNames[] = $index->getName();
+        }
+        
+        // Only create indexes that don't exist
+        Schema::connection('mongodb')->table('documents', function (Blueprint $table) use ($indexNames) {
+            // Add compound indexes if they don't exist
+            if (!in_array('source_url_is_processed_idx', $indexNames)) {
+                $table->index(['source_url', 'is_processed'], 'source_url_is_processed_idx');
+            }
             
-            // Add regular index for faster lookups
-            $collection->index('source_url');
-            
-            // Add compound index for common queries with source_url
-            $collection->index(['source_url', 'is_processed']);
-            $collection->index(['source_url', 'organization_id']);
+            if (!in_array('source_url_organization_id_idx', $indexNames)) {
+                $table->index(['source_url', 'organization_id'], 'source_url_organization_id_idx');
+            }
         });
     }
 
@@ -37,9 +47,17 @@ return new class extends Migration
     public function down(): void
     {
         Schema::connection('mongodb')->table('documents', function (Blueprint $collection) {
-            $collection->dropIndex(['source_url']);
-            $collection->dropIndex(['source_url', 'is_processed']);
-            $collection->dropIndex(['source_url', 'organization_id']);
+            try {
+                $collection->dropIndex('source_url_is_processed_idx');
+            } catch (\Exception $e) {
+                // Index might not exist
+            }
+            
+            try {
+                $collection->dropIndex('source_url_organization_id_idx');
+            } catch (\Exception $e) {
+                // Index might not exist
+            }
         });
     }
 };
