@@ -45,8 +45,9 @@ class ProcessPythonUrlsCommand extends Command
                 $query['processed'] = true; // Get processed URLs with scraped data
             }
             
-            // Get URLs from Python collection
-            $urls = $urlsCollection->find($query)->limit($limit);
+            // Get URLs from Python collection with proper MongoDB syntax
+            $options = ['limit' => $limit];
+            $urls = $urlsCollection->find($query, $options);
             $urlsArray = iterator_to_array($urls);
             
             if (empty($urlsArray)) {
