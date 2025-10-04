@@ -190,7 +190,7 @@ php scrawler pid:fetch --pid=nl.mnre1058 --save-to-db
 php scrawler python:scraper collect --timeout=600
 
 # Test full workflow
-php scrawler workflow:full-scraping --collect-limit=100
+php scrawler scrape:workflow --collect-pages=5 --process-limit=50
 
 # Test MongoDB connection
 php scrawler test:mongo-connection
@@ -298,24 +298,24 @@ php scrawler pid:fetch --pid=nl.mnre1058 --save-relational
 
 ### Workflow Commands
 
-#### `workflow:full-scraping`
+#### `scrape:workflow`
 Execute the complete scraping workflow in sequence.
 
 ```bash
 # Run full workflow
-php scrawler workflow:full-scraping
+php scrawler scrape:workflow
 
 # Skip URL collection step
-php scrawler workflow:full-scraping --skip-collect
+php scrawler scrape:workflow --skip-collect
 
 # Skip URL processing step  
-php scrawler workflow:full-scraping --skip-process
+php scrawler scrape:workflow --skip-process
 
 # Skip document conversion step
-php scrawler workflow:full-scraping --skip-convert
+php scrawler scrape:workflow --skip-convert
 
 # Set processing limits
-php scrawler workflow:full-scraping --collect-limit=100 --process-limit=50
+php scrawler scrape:workflow --collect-pages=10 --process-limit=100
 ```
 
 ### Data Processing Commands
