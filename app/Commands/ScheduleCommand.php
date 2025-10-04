@@ -43,7 +43,7 @@ class ScheduleCommand extends Command
             ->dailyAt('02:00')
             ->withoutOverlapping(1440) // 24 hours timeout
             ->runInBackground()
-            ->appendOutputTo(base_path('logs/organizations-crawl.log'))
+            ->appendOutputTo(storage_path('logs/organizations-crawl.log'))
             ->onOneServer(); // Ensure only one server runs this
 
         // Crawl OpenOverheid documents every 6 hours
@@ -59,7 +59,7 @@ class ScheduleCommand extends Command
             ->dailyAt('03:00')
             ->withoutOverlapping(1440) // 24 hours timeout
             ->runInBackground()
-            ->appendOutputTo(base_path('logs/organizations-process.log'))
+            ->appendOutputTo(storage_path('logs/organizations-process.log'))
             ->onOneServer();
 
         // Process documents every 2 hours
@@ -67,7 +67,7 @@ class ScheduleCommand extends Command
             ->everyTwoHours()
             ->withoutOverlapping(120) // 2 hours timeout
             ->runInBackground()
-            ->appendOutputTo(base_path('logs/documents-process.log'))
+            ->appendOutputTo(storage_path('logs/documents-process.log'))
             ->onOneServer();
 
         // Fetch PID data daily at 4:00 AM (after organizations are processed)
@@ -75,12 +75,12 @@ class ScheduleCommand extends Command
             ->dailyAt('04:00')
             ->withoutOverlapping(1440) // 24 hours timeout
             ->runInBackground()
-            ->appendOutputTo(base_path('logs/pid-fetch.log'))
+            ->appendOutputTo(storage_path('logs/pid-fetch.log'))
             ->onOneServer();
 
         // Cleanup old logs weekly
         $schedule->call(function () {
-            $logPath = base_path('logs');
+            $logPath = storage_path('logs');
             if (! is_dir($logPath)) {
                 mkdir($logPath, 0755, true);
             }

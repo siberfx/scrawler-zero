@@ -11,10 +11,10 @@ use App\Services\OrganizationDataService;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Console\Command;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Illuminate\Console\Scheduling\Schedule;
 
 class CrawlOrganisationsCommand extends Command
 {
@@ -352,9 +352,9 @@ class CrawlOrganisationsCommand extends Command
 
     /**
      * Generate PID from organization ID and type
-     * 
-     * @param string $id Organization ID from URL
-     * @param OrganizationType $type Organization type
+     *
+     * @param  string  $id  Organization ID from URL
+     * @param  OrganizationType  $type  Organization type
      * @return string|null Generated PID
      */
     protected function generatePidFromId(string $id, OrganizationType $type): ?string
@@ -365,7 +365,7 @@ class CrawlOrganisationsCommand extends Command
 
         // Generate PID based on organization type and ID
         // Format: nl.{type_prefix}{id}
-        $typePrefix = match($type) {
+        $typePrefix = match ($type) {
             OrganizationType::MINISTERIE => 'mnre',
             OrganizationType::GEMEENTE => 'gm',
             OrganizationType::PROVINCIE => 'pv',
@@ -387,6 +387,6 @@ class CrawlOrganisationsCommand extends Command
             ->dailyAt('02:00')
             ->withoutOverlapping()
             ->runInBackground()
-            ->appendOutputTo(base_path('logs/organizations-crawl.log'));
+            ->appendOutputTo(storage_path('logs/organizations-crawl.log'));
     }
 }
