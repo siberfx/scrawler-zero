@@ -1,6 +1,7 @@
 # MongoDB URL Scraper Dependencies
 playwright>=1.40.0
 pymongo>=4.0.0
+python-dotenv>=1.0.0
 
 # Note: The following are Python standard library modules (no installation needed):
 # - asyncio
@@ -9,3 +10,4 @@ pymongo>=4.0.0
 # - urllib.parse
 # - time
 # - sys
+# - os

@@ -3,14 +3,48 @@
 Simple MongoDB progress monitor for URL scraping
 """
 
+import os
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
+from dotenv import load_dotenv
 
-MONGO_CONNECTION_STRING = "mongodb://root:14396Oem0012443@212.132.107.72:27017/"
-DB_NAME = "scrawler"
+# Load environment variables from Laravel .env file
+env_path = Path(__file__).parent.parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(env_path)
+    print(f"[INFO] Loaded .env from: {env_path}")
+else:
+    print(f"[WARNING] .env file not found at: {env_path}")
+    # Try alternative path
+    alt_env_path = Path(__file__).parent.parent.parent.absolute() / '.env'
+    if alt_env_path.exists():
+        load_dotenv(alt_env_path)
+        print(f"[INFO] Loaded .env from: {alt_env_path}")
+    else:
+        print(f"[ERROR] .env file not found at: {alt_env_path}")
+
+# Build MongoDB connection string from .env variables
+DB_HOST = os.getenv('DB_HOST', '127.0.0.1')
+DB_PORT = os.getenv('DB_PORT', '27017')
+DB_DATABASE = os.getenv('DB_DATABASE', 'scrawler')
+DB_USERNAME = os.getenv('DB_USERNAME', '')
+DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+
+# Construct MongoDB connection string
+if DB_USERNAME and DB_PASSWORD:
+    MONGO_CONNECTION_STRING = f"mongodb://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/"
+elif DB_USERNAME:
+    MONGO_CONNECTION_STRING = f"mongodb://{DB_USERNAME}@{DB_HOST}:{DB_PORT}/"
+else:
+    MONGO_CONNECTION_STRING = f"mongodb://{DB_HOST}:{DB_PORT}/"
+
+DB_NAME = DB_DATABASE
 COLLECTION_NAME = "urls"
+
+print(f"[INFO] Using MongoDB connection: {MONGO_CONNECTION_STRING.replace(DB_PASSWORD, '***' if DB_PASSWORD else '')}")
 
 def connect_to_mongodb():
     """Connect to MongoDB"""
