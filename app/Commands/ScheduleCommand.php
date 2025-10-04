@@ -27,7 +27,7 @@ class ScheduleCommand extends Command
     public function handle(): void
     {
         $this->info('Running scheduled commands...');
-        
+
         // The schedule method below defines what commands should run
         // Laravel Zero will automatically handle the scheduling
         $this->info('Schedule configuration loaded successfully.');
@@ -47,12 +47,12 @@ class ScheduleCommand extends Command
             ->onOneServer(); // Ensure only one server runs this
 
         // Crawl OpenOverheid documents every 6 hours
-        $schedule->command('openoverheid:crawl')
-            ->everySixHours()
-            ->withoutOverlapping(360) // 6 hours timeout
-            ->runInBackground()
-            ->appendOutputTo(base_path('logs/openoverheid-crawl.log'))
-            ->onOneServer();
+        // $schedule->command('openoverheid:crawl')
+        //    ->everySixHours()
+        //    ->withoutOverlapping(360) // 6 hours timeout
+        //    ->runInBackground()
+        //    ->appendOutputTo(base_path('logs/openoverheid-crawl.log'))
+        //    ->onOneServer();
 
         // Process organization details daily at 3:00 AM (after organizations crawl)
         $schedule->command('organizations:process-details --limit=500')
@@ -81,10 +81,10 @@ class ScheduleCommand extends Command
         // Cleanup old logs weekly
         $schedule->call(function () {
             $logPath = base_path('logs');
-            if (!is_dir($logPath)) {
+            if (! is_dir($logPath)) {
                 mkdir($logPath, 0755, true);
             }
-            $files = glob($logPath . '/*.log');
+            $files = glob($logPath.'/*.log');
             foreach ($files as $file) {
                 if (filemtime($file) < strtotime('-30 days')) {
                     unlink($file);
