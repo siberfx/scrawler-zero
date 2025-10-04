@@ -521,22 +521,35 @@ class ProcessOrganisationDetailsCommand extends Command
     {
         $addresses = [];
 
+        // Debug: Log the structure of details
+        $this->info('DEBUG: Details structure: ' . json_encode(array_keys($details)));
+
         // First check if organisatiegegevens section exists and has table_data
         if (isset($details['organisatiegegevens']['table_data'])) {
             $orgData = $details['organisatiegegevens']['table_data'];
+            $this->info('DEBUG: Found organisatiegegevens with keys: ' . json_encode(array_keys($orgData)));
 
             // Extract postal address if available
             if (isset($orgData['postadres'])) {
                 $postAddress = is_array($orgData['postadres']) ? ($orgData['postadres']['text'] ?? '') : $orgData['postadres'];
 
                 if (! empty($postAddress)) {
-                    $addresses[] = [
+                    $addressData = [
                         'type' => 'postadres',
                         'postbus' => null,
                         'postcode' => null,
                         'plaats' => null,
                         'full_address' => $postAddress,
                     ];
+
+                    // Parse postadres: "Postbus 3 5130 AA ALPHEN NB"
+                    if (preg_match('/^Postbus\s+(\d+)\s+([0-9]{4}\s*[A-Z]{2})\s+(.+)$/i', $postAddress, $matches)) {
+                        $addressData['postbus'] = $matches[1];
+                        $addressData['postcode'] = $matches[2];
+                        $addressData['plaats'] = $matches[3];
+                    }
+
+                    $addresses[] = $addressData;
                 }
             }
 
@@ -545,7 +558,7 @@ class ProcessOrganisationDetailsCommand extends Command
                 $visitAddress = is_array($orgData['bezoekadres']) ? ($orgData['bezoekadres']['text'] ?? '') : $orgData['bezoekadres'];
 
                 if (! empty($visitAddress)) {
-                    $addresses[] = [
+                    $addressData = [
                         'type' => 'bezoekadres',
                         'straat' => null,
                         'huisnummer' => null,
@@ -553,13 +566,24 @@ class ProcessOrganisationDetailsCommand extends Command
                         'plaats' => null,
                         'full_address' => $visitAddress,
                     ];
+
+                    // Parse bezoekadres: "Willibrordplein 1 5131 AV ALPHEN NB Noord-Brabant"
+                    if (preg_match('/^(.+?)\s+(\d+[a-zA-Z]*)\s+([0-9]{4}\s*[A-Z]{2})\s+(.+)$/i', $visitAddress, $matches)) {
+                        $addressData['straat'] = $matches[1];
+                        $addressData['huisnummer'] = $matches[2];
+                        $addressData['postcode'] = $matches[3];
+                        $addressData['plaats'] = $matches[4];
+                    }
+
+                    $addresses[] = $addressData;
                 }
             }
         }
 
-        // Also check if contactgegevens section exists and has table_data
+        // Also check contactgegevens section
         if (isset($details['contactgegevens']['table_data'])) {
             $contactData = $details['contactgegevens']['table_data'];
+            $this->info('DEBUG: Found contactgegevens with keys: ' . json_encode(array_keys($contactData)));
 
             // Extract postal address if available and not already extracted
             if (isset($contactData['postadres']) && ! $this->hasAddressType($addresses, 'postadres')) {
@@ -643,6 +667,7 @@ class ProcessOrganisationDetailsCommand extends Command
             }
         }
 
+        $this->info('DEBUG: Extracted ' . count($addresses) . ' addresses: ' . json_encode($addresses));
         return $addresses;
     }
 
